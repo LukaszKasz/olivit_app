@@ -24,6 +24,20 @@ api.interceptors.request.use(
     }
 );
 
+// Add interceptor for handling 401 errors
+api.interceptors.response.use(
+    (response) => {
+        return response;
+    },
+    (error) => {
+        if (error.response && error.response.status === 401) {
+            tokenManager.removeToken();
+            window.location.href = '/login';
+        }
+        return Promise.reject(error);
+    }
+);
+
 // API functions
 export const authAPI = {
     register: async (username, email, password) => {
@@ -42,9 +56,13 @@ export const authAPI = {
     },
 };
 
-export const prestashopAPI = {
+export const ordersAPI = {
     getOrders: async (limit = 10) => {
-        const response = await api.get(`/api/prestashop/orders?limit=${limit}`);
+        const response = await api.get(`/api/orders?limit=${limit}`);
+        return response.data;
+    },
+    getOrderDetails: async (orderId) => {
+        const response = await api.get(`/api/orders/${orderId}/details`);
         return response.data;
     }
 };

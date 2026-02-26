@@ -72,11 +72,17 @@ const resources = {
             // Orders Page
             "orders.empty": "No orders yet.",
             "orders.colId": "ID",
+            "orders.colSource": "Source",
             "orders.colReference": "Reference",
             "orders.colCustomerId": "Customer ID",
             "orders.colTotalPaid": "Total Paid",
             "orders.colPayment": "Payment",
             "orders.colDate": "Date",
+            "orders.detailsProductName": "Product Name",
+            "orders.detailsQuantity": "Quantity",
+            "orders.detailsPrice": "Price",
+            "orders.printShippingLabel": "Print shipping label",
+            "orders.detailsLoading": "Loading details...",
 
             // Settings Page
             "settings.empty": "Settings will be available soon.",
@@ -155,11 +161,17 @@ const resources = {
             // Orders Page
             "orders.empty": "Brak zamówień.",
             "orders.colId": "ID",
+            "orders.colSource": "Źródło",
             "orders.colReference": "Referencja",
             "orders.colCustomerId": "ID Klienta",
-            "orders.colTotalPaid": "Zarobek",
+            "orders.colTotalPaid": "Wartość",
             "orders.colPayment": "Płatność",
             "orders.colDate": "Data",
+            "orders.detailsProductName": "Nazwa produktu",
+            "orders.detailsQuantity": "Ilość",
+            "orders.detailsPrice": "Cena",
+            "orders.printShippingLabel": "Drukuj etykietę transportową",
+            "orders.detailsLoading": "Ładowanie szczegółów...",
 
             // Settings Page
             "settings.empty": "Ustawienia będą dostępne wkrótce.",

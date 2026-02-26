@@ -34,7 +34,11 @@ class PrestaShopClient:
                 
                 # Prestashop API zwraca strukturę {"orders": [{...}]}
                 if "orders" in data:
-                    return data["orders"]
+                    orders = data["orders"]
+                    for order in orders:
+                        order["source"] = "PrestaShop"
+                        order["id"] = f"PS-{order.get('id', '')}"
+                    return orders
                 return []
                 
             except httpx.HTTPStatusError as e:
@@ -45,4 +49,34 @@ class PrestaShopClient:
                 print(f"Błąd połączenia: {e}")
                 raise HTTPException(status_code=503, detail="Could not connect to Prestashop")
                 
+    async def get_order_details(self, order_id: int) -> List[Dict[str, Any]]:
+        """
+        Pobiera szczegóły danego zamówienia.
+        """
+        url = f"{self.base_url}/order_details"
+        params = {
+            "output_format": "JSON",
+            "display": "[id,id_order,product_id,product_name,product_quantity,product_price]",
+            "filter[id_order]": f"[{order_id}]"
+        }
+        
+        auth = (self.api_key, "")
+        
+        async with httpx.AsyncClient() as client:
+            try:
+                response = await client.get(url, params=params, auth=auth)
+                response.raise_for_status()
+                data = response.json()
+                
+                if "order_details" in data:
+                    return data["order_details"]
+                return []
+                
+            except httpx.HTTPStatusError as e:
+                print(f"Błąd HTTP: {e.response.status_code} - {e.response.text}")
+                raise HTTPException(status_code=502, detail="Error fetching details from Prestashop")
+            except httpx.RequestError as e:
+                print(f"Błąd połączenia: {e}")
+                raise HTTPException(status_code=503, detail="Could not connect to Prestashop")
+
 prestashop_client = PrestaShopClient()

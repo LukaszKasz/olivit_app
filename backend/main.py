@@ -14,6 +14,7 @@ from auth import (
     ACCESS_TOKEN_EXPIRE_MINUTES
 )
 from services.prestashop import prestashop_client
+from services.baselinker import baselinker_client
 
 # Create database tables
 Base.metadata.create_all(bind=engine)
@@ -143,14 +144,40 @@ def read_users_me(current_user: User = Depends(get_current_user)):
     return current_user
 
 
-@app.get("/api/prestashop/orders")
-async def get_prestashop_orders(limit: int = 10, current_user: User = Depends(get_current_user)):
+@app.get("/api/orders")
+async def get_all_orders(limit: int = 10, current_user: User = Depends(get_current_user)):
     """
-    Fetch the latest orders from Prestashop API.
+    Fetch the latest orders from Prestashop and Baselinker API.
     Protected endpoint - requires valid JWT token.
     """
-    orders = await prestashop_client.get_latest_orders(limit)
-    return orders
+    try:
+        presta_orders = await prestashop_client.get_latest_orders(5)
+    except Exception as e:
+        print(f"Prestashop fetch error: {e}")
+        presta_orders = []
+        
+    try:
+        bl_orders = await baselinker_client.get_latest_orders()
+    except Exception as e:
+        print(f"Baselinker fetch error: {e}")
+        bl_orders = []
+        
+    # Dla potrzeb POC (Proof of Concept) nie sortujemy ogólnie po dacie,
+    # tylko zawsze dodajemy listę z Baselinkera bezpośrednio pod listą z PrestaShop.
+    all_orders = presta_orders[:5] + bl_orders[:limit]
+    return all_orders
+
+@app.get("/api/orders/{order_id}/details")
+async def get_all_order_details(order_id: str, current_user: User = Depends(get_current_user)):
+    """
+    Fetch the details (products) of a specific order.
+    Protected endpoint - requires valid JWT token.
+    """
+    if str(order_id).startswith("BL-"):
+        return await baselinker_client.get_order_details(order_id)
+    else:
+        real_id = str(order_id).replace("PS-", "")
+        return await prestashop_client.get_order_details(int(real_id))
 
 @app.get("/health")
 def health_check():
