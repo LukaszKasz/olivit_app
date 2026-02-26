@@ -42,6 +42,13 @@ export const authAPI = {
     },
 };
 
+export const prestashopAPI = {
+    getOrders: async (limit = 10) => {
+        const response = await api.get(`/api/prestashop/orders?limit=${limit}`);
+        return response.data;
+    }
+};
+
 // Token management
 export const tokenManager = {
     setToken: (token) => {

@@ -13,6 +13,7 @@ from auth import (
     get_current_user,
     ACCESS_TOKEN_EXPIRE_MINUTES
 )
+from services.prestashop import prestashop_client
 
 # Create database tables
 Base.metadata.create_all(bind=engine)
@@ -27,7 +28,7 @@ app = FastAPI(
 # CORS middleware configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:5173"],
+    allow_origins=["http://localhost:3300", "http://localhost:5173"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -141,6 +142,15 @@ def read_users_me(current_user: User = Depends(get_current_user)):
     """
     return current_user
 
+
+@app.get("/api/prestashop/orders")
+async def get_prestashop_orders(limit: int = 10, current_user: User = Depends(get_current_user)):
+    """
+    Fetch the latest orders from Prestashop API.
+    Protected endpoint - requires valid JWT token.
+    """
+    orders = await prestashop_client.get_latest_orders(limit)
+    return orders
 
 @app.get("/health")
 def health_check():

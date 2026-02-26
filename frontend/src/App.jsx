@@ -1,7 +1,9 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import LoginForm from './components/LoginForm';
 import RegisterForm from './components/RegisterForm';
-import Dashboard from './components/Dashboard';
+import AppLayout from './components/AppLayout';
+import OrdersPage from './components/OrdersPage';
+import SettingsPage from './components/SettingsPage';
 import { tokenManager } from './api';
 
 function ProtectedRoute({ children }) {
@@ -16,13 +18,15 @@ function App() {
                 <Route path="/login" element={<LoginForm />} />
                 <Route path="/register" element={<RegisterForm />} />
                 <Route
-                    path="/dashboard"
                     element={
                         <ProtectedRoute>
-                            <Dashboard />
+                            <AppLayout />
                         </ProtectedRoute>
                     }
-                />
+                >
+                    <Route path="/orders" element={<OrdersPage />} />
+                    <Route path="/settings" element={<SettingsPage />} />
+                </Route>
             </Routes>
         </Router>
     );

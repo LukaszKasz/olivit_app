@@ -64,6 +64,23 @@ const resources = {
             "dashboard.feature6": "Multi-language support (EN/PL)",
             "dashboard.errorLoading": "Failed to load user data",
 
+            // Sidebar
+            "sidebar.orders": "Orders",
+            "sidebar.settings": "Settings",
+            "sidebar.logout": "Logout",
+
+            // Orders Page
+            "orders.empty": "No orders yet.",
+            "orders.colId": "ID",
+            "orders.colReference": "Reference",
+            "orders.colCustomerId": "Customer ID",
+            "orders.colTotalPaid": "Total Paid",
+            "orders.colPayment": "Payment",
+            "orders.colDate": "Date",
+
+            // Settings Page
+            "settings.empty": "Settings will be available soon.",
+
             // Language Switcher
             "language.english": "English",
             "language.polish": "Polski",
@@ -129,6 +146,23 @@ const resources = {
             "dashboard.feature5": "Konteneryzacja Docker dla wszystkich serwisów",
             "dashboard.feature6": "Wsparcie wielojęzyczne (EN/PL)",
             "dashboard.errorLoading": "Nie udało się załadować danych użytkownika",
+
+            // Sidebar
+            "sidebar.orders": "Zamówienia",
+            "sidebar.settings": "Ustawienia",
+            "sidebar.logout": "Wyloguj",
+
+            // Orders Page
+            "orders.empty": "Brak zamówień.",
+            "orders.colId": "ID",
+            "orders.colReference": "Referencja",
+            "orders.colCustomerId": "ID Klienta",
+            "orders.colTotalPaid": "Zarobek",
+            "orders.colPayment": "Płatność",
+            "orders.colDate": "Data",
+
+            // Settings Page
+            "settings.empty": "Ustawienia będą dostępne wkrótce.",
 
             // Language Switcher
             "language.english": "English",

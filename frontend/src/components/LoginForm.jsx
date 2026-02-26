@@ -30,7 +30,7 @@ function LoginForm() {
         try {
             const response = await authAPI.login(formData.username, formData.password);
             tokenManager.setToken(response.access_token);
-            navigate('/dashboard');
+            navigate('/orders');
         } catch (err) {
             setError(
                 err.response?.data?.detail || t('login.errorInvalid')
@@ -72,6 +72,7 @@ function LoginForm() {
                             className="input-field"
                             placeholder={t('login.usernamePlaceholder')}
                             required
+                            autoComplete="username"
                         />
                     </div>
 
@@ -88,6 +89,7 @@ function LoginForm() {
                             className="input-field"
                             placeholder={t('login.passwordPlaceholder')}
                             required
+                            autoComplete="current-password"
                         />
                     </div>
 

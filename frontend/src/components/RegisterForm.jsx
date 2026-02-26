@@ -86,6 +86,7 @@ function RegisterForm() {
                             className="input-field"
                             placeholder={t('register.usernamePlaceholder')}
                             required
+                            autoComplete="username"
                         />
                     </div>
 
@@ -102,6 +103,7 @@ function RegisterForm() {
                             className="input-field"
                             placeholder={t('register.emailPlaceholder')}
                             required
+                            autoComplete="email"
                         />
                     </div>
 
@@ -118,6 +120,7 @@ function RegisterForm() {
                             className="input-field"
                             placeholder={t('register.passwordPlaceholder')}
                             required
+                            autoComplete="new-password"
                         />
                     </div>
 
@@ -134,6 +137,7 @@ function RegisterForm() {
                             className="input-field"
                             placeholder={t('register.confirmPasswordPlaceholder')}
                             required
+                            autoComplete="new-password"
                         />
                     </div>
 
