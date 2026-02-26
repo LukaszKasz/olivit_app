@@ -1,10 +1,10 @@
-# App Start - Authentication Template
+# Advox OMS - Order Management System
 
-Minimalna aplikacja z funkcjonalnością logowania jako podstawa dla wielu innych projektów.
+Aplikacja do zarządzania zamówieniami oparta na szablonie autentykacji.
 
 ## 📋 Opis
 
-Aplikacja zawiera tylko niezbędne komponenty do autentykacji użytkowników:
+Aplikacja zawiera niezbędne komponenty do autentykacji użytkowników:
 - Rejestracja użytkownika (username, email, password)
 - Logowanie użytkownika (JWT token)
 - Prosty Dashboard po zalogowaniu
@@ -41,10 +41,10 @@ Aplikacja zawiera tylko niezbędne komponenty do autentykacji użytkowników:
 
 ## 🚀 Uruchomienie
 
-### 1. Klonowanie/Przejście do katalogu projektu
+### 1. Przejście do katalogu projektu
 
 ```bash
-cd /home/lkasztelan/projekty/app_start
+cd /home/lkasztelan/projekty/advox_oms
 ```
 
 ### 2. Uruchomienie aplikacji
@@ -62,42 +62,10 @@ Pierwsze uruchomienie może potrwać kilka minut (pobieranie obrazów, instalacj
 - **API Documentation (Swagger)**: http://localhost:8000/docs
 - **PostgreSQL**: localhost:5432
 
-## 📝 Użytkowanie
-
-### Rejestracja nowego użytkownika
-
-1. Otwórz http://localhost:3000
-2. Kliknij "Zarejestruj się" / "Sign Up"
-3. Wypełnij formularz:
-   - Username (unikalna nazwa użytkownika)
-   - Email (unikalny adres email)
-   - Password (minimum 6 znaków)
-   - Confirm Password
-4. Kliknij "Zarejestruj się" / "Sign Up"
-5. Po pomyślnej rejestracji zostaniesz przekierowany do strony logowania
-
-### Logowanie
-
-1. Wprowadź username i password
-2. Kliknij "Zaloguj się" / "Sign In"
-3. Po pomyślnym logowaniu zostaniesz przekierowany do Dashboard
-
-### Dashboard
-
-Dashboard wyświetla:
-- Informacje o zalogowanym użytkowniku (ID, username, email)
-- Status autentykacji
-- Listę funkcji POC
-- Przycisk wylogowania
-
-### Zmiana języka
-
-Użyj przełącznika EN/PL w prawym górnym rogu aplikacji.
-
 ## 🗂️ Struktura Projektu
 
 ```
-app_start/
+advox_oms/
 ├── backend/
 │   ├── Dockerfile
 │   ├── requirements.txt
@@ -142,7 +110,7 @@ cp .env.example .env
 Domyślne wartości:
 - `POSTGRES_USER=postgres`
 - `POSTGRES_PASSWORD=postgres`
-- `POSTGRES_DB=app_start_db`
+- `POSTGRES_DB=advox_oms_db`
 - `SECRET_KEY=your-secret-key-change-in-production-please`
 
 **WAŻNE**: Zmień `SECRET_KEY` w środowisku produkcyjnym!
@@ -157,14 +125,6 @@ Aby usunąć również wolumeny (baza danych):
 
 ```bash
 docker-compose down -v
-```
-
-## 🧹 Czyszczenie
-
-Usunięcie wszystkich kontenerów, obrazów i wolumenów:
-
-```bash
-docker-compose down -v --rmi all
 ```
 
 ## 📊 API Endpoints
@@ -189,56 +149,14 @@ docker-compose down -v --rmi all
 - Walidacja danych wejściowych (Pydantic)
 - Security headers w nginx
 
-## 🐛 Troubleshooting
+## 🧹 Czyszczenie
 
-### Port już zajęty
-
-Jeśli porty 3000, 8000 lub 5432 są zajęte, zmień je w `docker-compose.yml`:
-
-```yaml
-ports:
-  - "3001:80"    # Frontend (zmień 3000 na 3001)
-  - "8001:8000"  # Backend (zmień 8000 na 8001)
-  - "5433:5432"  # PostgreSQL (zmień 5432 na 5433)
-```
-
-### Błąd połączenia z bazą danych
-
-Upewnij się, że kontener bazy danych jest uruchomiony:
+Usunięcie wszystkich kontenerów, obrazów i wolumenów:
 
 ```bash
-docker-compose ps
-```
-
-Sprawdź logi:
-
-```bash
-docker-compose logs db
-```
-
-### Frontend nie łączy się z backendem
-
-Sprawdź, czy backend jest dostępny:
-
-```bash
-curl http://localhost:8000/health
-```
-
-### Rebuild po zmianach w kodzie
-
-```bash
-docker-compose up --build
+docker-compose down -v --rmi all
 ```
 
 ## 📚 Dalszy rozwój
 
-Ta aplikacja jest podstawą. Możesz ją rozbudować o:
-- Resetowanie hasła
-- Weryfikację emaila
-- Role użytkowników
-- Profile użytkowników
-- Dodatkowe funkcjonalności biznesowe
-
-## 📄 Licencja
-
-Projekt jest szablonem do użytku wewnętrznego.
+Ta aplikacja jest podstawą do budowy systemu zarządzania zamówieniami (OMS).
