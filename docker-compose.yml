@@ -1,7 +1,4 @@
-version: '3.8'
-
 services:
-  # PostgreSQL Database
   db:
     image: postgres:15-alpine
     container_name: advox-oms-db
@@ -21,7 +18,6 @@ services:
     networks:
       - advox-oms-network
 
-  # FastAPI Backend
   backend:
     build:
       context: ./backend
@@ -30,8 +26,20 @@ services:
     environment:
       DATABASE_URL: postgresql://postgres:postgres@db:5432/advox_oms_db
       SECRET_KEY: your-secret-key-change-in-production-please
+      WOOCOMMERCE_URL: "https://host.docker.internal:8888/wp-json/wc/v3"
+      WOOCOMMERCE_CONSUMER_KEY: "ck_8b51b5cd1a0a3b96f752a4b0cba276b37b6025ee"
+      WOOCOMMERCE_CONSUMER_SECRET: "cs_5ad0b8fdedfc37cc75eb839c0b68b561cd675943"
+      WOOCOMMERCE_VERIFY_SSL: "false"
+      MAGENTO_URL: "https://host.docker.internal:8444/rest"
+      MAGENTO_CONSUMER_KEY: "kqe3wuqss6fhu90pww8dxy8a2r33y2gk"
+      MAGENTO_CONSUMER_SECRET: "0pa9iainsnhmfzsj8rslxk6l1r055b7e"
+      MAGENTO_ACCESS_TOKEN: "qs5kl1q6w9ft51n697tt95a6gxi43jln"
+      MAGENTO_ACCESS_TOKEN_SECRET: "hshzfykkiez33rht1v0t7wf0cfznpz4e"
+      MAGENTO_VERIFY_SSL: "false"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
-      - "8000:8000"
+      - "8001:8000"
     depends_on:
       db:
         condition: service_healthy
@@ -39,7 +47,6 @@ services:
       - advox-oms-network
     restart: unless-stopped
 
-  # React Frontend
   frontend:
     build:
       context: ./frontend

@@ -58,8 +58,8 @@ Pierwsze uruchomienie może potrwać kilka minut (pobieranie obrazów, instalacj
 ### 3. Dostęp do aplikacji
 
 - **Frontend**: http://localhost:3300
-- **Backend API**: http://localhost:8000
-- **API Documentation (Swagger)**: http://localhost:8000/docs
+- **Backend API**: http://localhost:8001
+- **API Documentation (Swagger)**: http://localhost:8001/docs
 - **PostgreSQL**: localhost:5432
 
 ## 🗂️ Struktura Projektu

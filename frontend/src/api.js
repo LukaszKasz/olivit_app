@@ -1,10 +1,18 @@
 import axios from 'axios';
 
-const API_BASE_URL = 'http://localhost:8000';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8001';
+const NEXO_API_BASE_URL = import.meta.env.VITE_NEXO_API_BASE_URL || 'http://localhost:5085';
 
 // Create axios instance with default config
 const api = axios.create({
     baseURL: API_BASE_URL,
+    headers: {
+        'Content-Type': 'application/json',
+    },
+});
+
+const nexoApi = axios.create({
+    baseURL: NEXO_API_BASE_URL,
     headers: {
         'Content-Type': 'application/json',
     },
@@ -65,6 +73,35 @@ export const ordersAPI = {
         const response = await api.get(`/api/orders/${orderId}/details`);
         return response.data;
     }
+};
+
+export const integrationSettingsAPI = {
+    getSettings: async () => {
+        const response = await api.get('/api/integrations/settings');
+        return response.data;
+    },
+    updateSettings: async (payload) => {
+        const response = await api.put('/api/integrations/settings', payload);
+        return response.data;
+    },
+};
+
+export const nexoAPI = {
+    getSession: async () => {
+        const response = await nexoApi.get('/api/nexo/session');
+        return response.data;
+    },
+    login: async (operatorLogin, operatorPassword) => {
+        const response = await nexoApi.post('/api/nexo/login', {
+            operatorLogin,
+            operatorPassword,
+        });
+        return response.data;
+    },
+    getGoods: async () => {
+        const response = await nexoApi.get('/api/nexo/towary');
+        return response.data;
+    },
 };
 
 // Token management

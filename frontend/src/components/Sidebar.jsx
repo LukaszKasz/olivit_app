@@ -1,14 +1,55 @@
+import { useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { tokenManager } from '../api';
+import { nexoAPI, tokenManager } from '../api';
+import { GOODS_STORAGE_KEY } from './GoodsPage';
 
 function Sidebar({ collapsed, onToggle }) {
     const { t } = useTranslation();
     const navigate = useNavigate();
+    const [goodsLoading, setGoodsLoading] = useState(false);
 
     const handleLogout = () => {
         tokenManager.removeToken();
         navigate('/login');
+    };
+
+    const handleGoodsClick = async () => {
+        if (goodsLoading) return;
+
+        setGoodsLoading(true);
+        try {
+            const sessionResponse = await nexoAPI.getSession();
+            const activeSession = sessionResponse?.success && sessionResponse?.data?.isLoggedIn
+                ? sessionResponse.data
+                : null;
+
+            const result = activeSession
+                ? { success: true, data: activeSession }
+                : await nexoAPI.login('Szef firmy', 'robocze');
+            const goodsResponse = await nexoAPI.getGoods();
+
+            if (!goodsResponse?.success) {
+                throw new Error(goodsResponse?.error || goodsResponse?.message || t('sidebar.goodsFetchError'));
+            }
+
+            const goods = Array.isArray(goodsResponse?.data) ? goodsResponse.data : [];
+            const payload = {
+                goods,
+                session: result?.data || null,
+            };
+            sessionStorage.setItem(GOODS_STORAGE_KEY, JSON.stringify(payload));
+            navigate('/goods', { state: { payload } });
+        } catch (error) {
+            const message = error?.response?.data?.message
+                || error?.response?.data?.error
+                || error?.message
+                || error?.response?.data?.detail
+                || t('sidebar.goodsLoginError');
+            window.alert(message);
+        } finally {
+            setGoodsLoading(false);
+        }
     };
 
     const navLinkClass = ({ isActive }) =>
@@ -48,6 +89,23 @@ function Sidebar({ collapsed, onToggle }) {
                     </svg>
                     {!collapsed && <span className="whitespace-nowrap">{t('sidebar.orders')}</span>}
                 </NavLink>
+
+                <button
+                    type="button"
+                    onClick={handleGoodsClick}
+                    disabled={goodsLoading}
+                    title={t('sidebar.goods')}
+                    className="flex w-full items-center gap-3 rounded-lg px-4 py-3 text-slate-300 transition-all duration-200 hover:bg-slate-700/60 hover:text-white disabled:cursor-wait disabled:opacity-60"
+                >
+                    <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 13V7a2 2 0 00-2-2h-3V3H9v2H6a2 2 0 00-2 2v6m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0H4m4 4h.01M12 17h.01M16 17h.01" />
+                    </svg>
+                    {!collapsed && (
+                        <span className="whitespace-nowrap">
+                            {goodsLoading ? t('sidebar.goodsLoggingIn') : t('sidebar.goods')}
+                        </span>
+                    )}
+                </button>
 
                 <NavLink to="/settings" className={navLinkClass} title={t('sidebar.settings')}>
                     <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">

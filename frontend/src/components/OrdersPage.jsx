@@ -12,6 +12,20 @@ function OrdersPage() {
     const [detailsLoading, setDetailsLoading] = useState(false);
     const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0, orderId: null });
 
+    const isNumericLike = (value) => {
+        if (value === null || value === undefined) return false;
+        if (typeof value === 'number') return Number.isFinite(value);
+        if (typeof value !== 'string') return false;
+        const normalized = value.trim().replace(',', '.');
+        return normalized !== '' && !Number.isNaN(Number(normalized));
+    };
+
+    const formatAmount = (value) => {
+        const numeric = Number(value);
+        if (!Number.isFinite(numeric)) return value;
+        return numeric.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    };
+
     const handleContextMenu = (e, orderId) => {
         e.preventDefault();
         setContextMenu({
@@ -108,7 +122,7 @@ function OrdersPage() {
                                     <th className="px-6 py-3">{t('orders.colSource')}</th>
                                     <th className="px-6 py-3">{t('orders.colReference')}</th>
                                     <th className="px-6 py-3">{t('orders.colCustomerId')}</th>
-                                    <th className="px-6 py-3">{t('orders.colTotalPaid')}</th>
+                                    <th className="px-6 py-3 text-right">{t('orders.colTotalPaid')}</th>
                                     <th className="px-6 py-3">{t('orders.colPayment')}</th>
                                     <th className="px-6 py-3">{t('orders.colDate')}</th>
                                 </tr>
@@ -123,15 +137,19 @@ function OrdersPage() {
                                         >
                                             <td className="px-6 py-4 font-medium" style={{ whiteSpace: 'nowrap' }}>{order.id}</td>
                                             <td className="px-6 py-4">
-                                                <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${order.source === 'Baselinker' ? 'bg-indigo-100 text-indigo-800' : 'bg-pink-100 text-pink-800'
+                                                <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${order.source === 'Baselinker' ? 'bg-indigo-100 text-indigo-800' :
+                                                        order.source === 'WooCommerce' ? 'bg-purple-100 text-purple-800' :
+                                                            order.source === 'Shopify' ? 'bg-emerald-100 text-emerald-800' :
+                                                                order.source === 'Magento' ? 'bg-orange-100 text-orange-800' :
+                                                            'bg-pink-100 text-pink-800'
                                                     }`}>
                                                     {order.source}
                                                 </span>
                                             </td>
                                             <td className="px-6 py-4">{order.reference}</td>
-                                            <td className="px-6 py-4">{order.id_customer}</td>
-                                            <td className="px-6 py-4 whitespace-nowrap">
-                                                {Number(order.total_paid).toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                            <td className={`px-6 py-4 ${isNumericLike(order.id_customer) ? 'text-right tabular-nums' : ''}`}>{order.id_customer}</td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-right tabular-nums">
+                                                {formatAmount(order.total_paid)}
                                             </td>
                                             <td className="px-6 py-4">{order.payment}</td>
                                             <td className="px-6 py-4">{order.date_add}</td>
@@ -151,8 +169,8 @@ function OrdersPage() {
                                                                     <tr>
                                                                         <th className="px-4 py-2">ID</th>
                                                                         <th className="px-4 py-2">{t('orders.detailsProductName')}</th>
-                                                                        <th className="px-4 py-2">{t('orders.detailsQuantity')}</th>
-                                                                        <th className="px-4 py-2">{t('orders.detailsPrice')} (Netto)</th>
+                                                                        <th className="px-4 py-2 text-right">{t('orders.detailsQuantity')}</th>
+                                                                        <th className="px-4 py-2 text-right">{t('orders.detailsPrice')} (Netto)</th>
                                                                     </tr>
                                                                 </thead>
                                                                 <tbody>
@@ -160,9 +178,9 @@ function OrdersPage() {
                                                                         <tr key={item.id} className="border-b last:border-b-0 hover:bg-slate-50">
                                                                             <td className="px-4 py-2">{item.product_id}</td>
                                                                             <td className="px-4 py-2 font-medium">{item.product_name}</td>
-                                                                            <td className="px-4 py-2">{item.product_quantity}</td>
-                                                                            <td className="px-4 py-2 tracking-wide font-mono whitespace-nowrap">
-                                                                                {Number(item.product_price).toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                                            <td className="px-4 py-2 text-right tabular-nums">{item.product_quantity}</td>
+                                                                            <td className="px-4 py-2 tracking-wide font-mono whitespace-nowrap text-right tabular-nums">
+                                                                                {formatAmount(item.product_price)}
                                                                             </td>
                                                                         </tr>
                                                                     ))}

@@ -10,6 +10,10 @@ class PrestaShopClient:
     def __init__(self):
         self.base_url = PRESTASHOP_URL
         self.api_key = PRESTASHOP_API_KEY
+
+    def configure(self, base_url: str, api_key: str) -> None:
+        self.base_url = base_url
+        self.api_key = api_key
     
     async def get_latest_orders(self, limit: int = 10) -> List[Dict[str, Any]]:
         """
