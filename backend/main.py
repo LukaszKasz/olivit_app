@@ -1,14 +1,25 @@
 from datetime import timedelta
+from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, EmailStr
-from sqlalchemy import inspect, text
+from sqlalchemy import inspect, or_, text
 from sqlalchemy.orm import Session
 
 from database import engine, get_db, Base, SessionLocal
-from models import User, IntegrationSettings
+from main_product_orders_api import MainProductTestOrderCreate, MainProductTestOrderResponse
+from main_products_api import MainProductResponse
+from main_products_seed import MAIN_PRODUCTS
+from models import User, IntegrationSettings, MainProduct, MainProductTestOrder, VariantProduct, VariantProductBatchTestOrder, VariantProductFinishedProductControl
+from variant_products_api import VariantProductResponse, VariantProductsPageResponse
+from variant_product_batch_orders_api import VariantProductBatchTestOrderCreate, VariantProductBatchTestOrderResponse
+from variant_product_finished_product_controls_api import (
+    VariantProductFinishedProductControlCreate,
+    VariantProductFinishedProductControlResponse,
+)
+from variant_products_seed import load_variant_products_seed
 from auth import (
     verify_password,
     get_password_hash,
@@ -56,8 +67,8 @@ Base.metadata.create_all(bind=engine)
 
 # Initialize FastAPI app
 app = FastAPI(
-    title="App Start Auth API",
-    description="Authentication API - Base Template",
+    title="Olivit zarządzanie jakością API",
+    description="API for the Olivit zarządzanie jakością application",
     version="1.0.0",
 )
 
@@ -181,6 +192,29 @@ class IntegrationSettingsUpdateDTO(BaseModel):
     magento: Optional[MagentoSettingsUpdateDTO] = None
 
 
+def ensure_main_products_seed(db: Session) -> None:
+    if db.query(MainProduct.id).first():
+        return
+
+    db.add_all([
+        MainProduct(project_number=project_number, name=name, order_index=index)
+        for index, (project_number, name) in enumerate(MAIN_PRODUCTS, start=1)
+    ])
+    db.commit()
+
+
+def ensure_variant_products_seed(db: Session) -> None:
+    if db.query(VariantProduct.id).first():
+        return
+
+    rows = load_variant_products_seed()
+    db.add_all([
+        VariantProduct(sku=sku, name=name, ean=ean, order_index=index)
+        for index, (sku, name, ean) in enumerate(rows, start=1)
+    ])
+    db.commit()
+
+
 def ensure_integration_settings_schema() -> None:
     inspector = inspect(engine)
     try:
@@ -191,6 +225,81 @@ def ensure_integration_settings_schema() -> None:
     if "access_token_secret" not in columns:
         with engine.begin() as connection:
             connection.execute(text("ALTER TABLE integration_settings ADD COLUMN access_token_secret VARCHAR(255)"))
+
+
+def ensure_main_product_test_orders_schema() -> None:
+    inspector = inspect(engine)
+    try:
+        columns = {col["name"] for col in inspector.get_columns("main_product_test_orders")}
+    except Exception:
+        return
+
+    if "batch_number" not in columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE main_product_test_orders ADD COLUMN batch_number VARCHAR(255)"))
+
+
+def ensure_variant_product_batch_test_orders_schema() -> None:
+    inspector = inspect(engine)
+    try:
+        columns = {col["name"] for col in inspector.get_columns("variant_product_batch_test_orders")}
+    except Exception:
+        return
+
+    statements: list[str] = []
+    if "laboratory_name" in columns:
+        statements.append("ALTER TABLE variant_product_batch_test_orders ALTER COLUMN laboratory_name DROP NOT NULL")
+    if "ordered_at" in columns:
+        statements.append("ALTER TABLE variant_product_batch_test_orders ALTER COLUMN ordered_at DROP NOT NULL")
+
+    extra_columns = {
+        "batch_added_at": "TIMESTAMP WITH TIME ZONE",
+        "printed_material_type": "VARCHAR(100)",
+        "product_name": "VARCHAR(255)",
+        "product_project_number": "VARCHAR(100)",
+        "product_ean_number": "VARCHAR(255)",
+        "product_batch_number": "VARCHAR(255)",
+        "product_expiry_date": "VARCHAR(50)",
+        "control_date": "VARCHAR(50)",
+        "market_label_version": "VARCHAR(255)",
+        "active_substances_match_pds": "VARCHAR(50)",
+        "label_version_matches_used_version": "VARCHAR(10)",
+        "has_printing_errors": "VARCHAR(10)",
+        "has_graphic_design_errors": "VARCHAR(10)",
+        "print_correctness": "VARCHAR(10)",
+        "has_labeling_errors": "VARCHAR(10)",
+        "cap_is_correct": "VARCHAR(20)",
+        "induction_seal_weld_correct": "VARCHAR(20)",
+        "induction_seal_opening_correct": "VARCHAR(20)",
+        "package_is_dirty": "VARCHAR(10)",
+        "package_is_damaged": "VARCHAR(10)",
+        "qr_code_is_active": "VARCHAR(20)",
+        "package_contents_match_card": "VARCHAR(10)",
+        "product_verified": "VARCHAR(10)",
+        "comment": "VARCHAR(2000)",
+        "control_saved_at": "TIMESTAMP WITH TIME ZONE",
+    }
+
+    for column_name, column_type in extra_columns.items():
+        if column_name not in columns:
+            statements.append(f"ALTER TABLE variant_product_batch_test_orders ADD COLUMN {column_name} {column_type}")
+
+    if statements:
+        with engine.begin() as connection:
+            for statement in statements:
+                connection.execute(text(statement))
+
+    if "batch_added_at" not in columns:
+        with engine.begin() as connection:
+            connection.execute(text("UPDATE variant_product_batch_test_orders SET batch_added_at = COALESCE(ordered_at, NOW()) WHERE batch_added_at IS NULL"))
+
+
+def ensure_variant_product_finished_product_controls_schema() -> None:
+    inspector = inspect(engine)
+    try:
+        inspector.get_columns("variant_product_finished_product_controls")
+    except Exception:
+        return
 
 
 def ensure_integration_settings_seed(db: Session) -> None:
@@ -390,7 +499,12 @@ def startup_seed_settings():
     db = SessionLocal()
     try:
         ensure_integration_settings_schema()
+        ensure_main_product_test_orders_schema()
+        ensure_variant_product_batch_test_orders_schema()
+        ensure_variant_product_finished_product_controls_schema()
         ensure_integration_settings_seed(db)
+        ensure_main_products_seed(db)
+        ensure_variant_products_seed(db)
     finally:
         db.close()
 
@@ -401,7 +515,7 @@ def read_root():
     Root endpoint - API health check.
     """
     return {
-        "message": "App Start Auth API is running",
+        "message": "Olivit zarządzanie jakością API is running",
         "version": "1.0.0",
         "docs": "/docs",
     }
@@ -475,6 +589,249 @@ def read_users_me(current_user: User = Depends(get_current_user)):
     Protected endpoint - requires valid JWT token.
     """
     return current_user
+
+
+@app.get("/api/main-products", response_model=list[MainProductResponse])
+def get_main_products(
+    q: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _ = current_user
+
+    query = db.query(MainProduct)
+    if q and q.strip():
+        pattern = f"%{q.strip()}%"
+        query = query.filter(
+            or_(
+                MainProduct.project_number.ilike(pattern),
+                MainProduct.name.ilike(pattern),
+            )
+        )
+
+    return query.order_by(MainProduct.order_index.asc()).all()
+
+
+@app.get("/api/variant-products", response_model=VariantProductsPageResponse)
+def get_variant_products(
+    q: Optional[str] = None,
+    page: int = 1,
+    page_size: int = 50,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _ = current_user
+
+    page = max(page, 1)
+    page_size = max(1, min(page_size, 100))
+
+    query = db.query(VariantProduct)
+    if q and q.strip():
+        pattern = f"%{q.strip()}%"
+        query = query.filter(
+            or_(
+                VariantProduct.sku.ilike(pattern),
+                VariantProduct.name.ilike(pattern),
+                VariantProduct.ean.ilike(pattern),
+            )
+        )
+
+    total = query.count()
+    items = (
+        query.order_by(VariantProduct.order_index.asc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+        .all()
+    )
+
+    return VariantProductsPageResponse(
+        items=items,
+        total=total,
+        page=page,
+        page_size=page_size,
+    )
+
+
+@app.get("/api/main-products/ordered-tests", response_model=list[MainProductTestOrderResponse])
+def get_main_product_test_orders(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _ = current_user
+    return db.query(MainProductTestOrder).order_by(MainProductTestOrder.ordered_at.desc(), MainProductTestOrder.id.desc()).all()
+
+
+@app.post("/api/main-products/ordered-tests", response_model=MainProductTestOrderResponse, status_code=status.HTTP_201_CREATED)
+def create_main_product_test_order(
+    payload: MainProductTestOrderCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _ = current_user
+
+    project_number = payload.project_number.strip()
+    name = payload.name.strip()
+    laboratory_name = payload.laboratory_name.strip()
+    batch_number = payload.batch_number.strip()
+
+    if not project_number or not name or not laboratory_name or not batch_number:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="project_number, name, laboratory_name and batch_number are required",
+        )
+
+    order = MainProductTestOrder(
+        project_number=project_number,
+        name=name,
+        laboratory_name=laboratory_name,
+        batch_number=batch_number,
+    )
+    db.add(order)
+    db.commit()
+    db.refresh(order)
+    return order
+
+
+@app.get("/api/variant-products/batches/ordered-tests", response_model=list[VariantProductBatchTestOrderResponse])
+def get_variant_product_batch_test_orders(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _ = current_user
+    return (
+        db.query(VariantProductBatchTestOrder)
+        .order_by(VariantProductBatchTestOrder.batch_added_at.desc(), VariantProductBatchTestOrder.id.desc())
+        .all()
+    )
+
+
+@app.post("/api/variant-products/batches/ordered-tests", response_model=VariantProductBatchTestOrderResponse, status_code=status.HTTP_201_CREATED)
+def create_variant_product_batch_test_order(
+    payload: VariantProductBatchTestOrderCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _ = current_user
+
+    sku = payload.sku.strip()
+    name = payload.name.strip()
+    ean = payload.ean.strip()
+    laboratory_name = (payload.laboratory_name or "").strip()
+    batch_number = payload.batch_number.strip()
+
+    if not sku or not name or not ean or not batch_number:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="sku, name, ean and batch_number are required",
+        )
+
+    order = VariantProductBatchTestOrder(
+        sku=sku,
+        name=name,
+        ean=ean,
+        laboratory_name=laboratory_name or None,
+        batch_number=batch_number,
+        batch_added_at=datetime.now(timezone.utc),
+        ordered_at=datetime.now(timezone.utc) if laboratory_name else None,
+    )
+    db.add(order)
+    db.commit()
+    db.refresh(order)
+    return order
+
+
+@app.get("/api/variant-products/finished-product-controls", response_model=list[VariantProductFinishedProductControlResponse])
+def get_variant_product_finished_product_controls(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _ = current_user
+    return (
+        db.query(VariantProductFinishedProductControl)
+        .order_by(VariantProductFinishedProductControl.created_at.desc(), VariantProductFinishedProductControl.id.desc())
+        .all()
+    )
+
+
+@app.post(
+    "/api/variant-products/finished-product-controls",
+    response_model=VariantProductFinishedProductControlResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_variant_product_finished_product_control(
+    payload: VariantProductFinishedProductControlCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _ = current_user
+
+    fields = {
+        "sku": payload.sku.strip(),
+        "name": payload.name.strip(),
+        "ean": payload.ean.strip(),
+        "printed_material_type": payload.printed_material_type.strip(),
+        "product_name": payload.product_name.strip(),
+        "product_project_number": payload.product_project_number.strip(),
+        "product_ean_number": payload.product_ean_number.strip(),
+        "product_batch_number": payload.product_batch_number.strip(),
+        "product_expiry_date": payload.product_expiry_date.strip(),
+        "control_date": payload.control_date.strip(),
+        "market_label_version": payload.market_label_version.strip(),
+        "active_substances_match_pds": payload.active_substances_match_pds.strip(),
+        "label_version_matches_used_version": payload.label_version_matches_used_version.strip(),
+        "has_printing_errors": payload.has_printing_errors.strip(),
+        "has_graphic_design_errors": payload.has_graphic_design_errors.strip(),
+        "print_correctness": payload.print_correctness.strip(),
+        "has_labeling_errors": payload.has_labeling_errors.strip(),
+        "cap_is_correct": payload.cap_is_correct.strip(),
+        "induction_seal_weld_correct": payload.induction_seal_weld_correct.strip(),
+        "induction_seal_opening_correct": payload.induction_seal_opening_correct.strip(),
+        "package_is_dirty": payload.package_is_dirty.strip(),
+        "package_is_damaged": payload.package_is_damaged.strip(),
+        "qr_code_is_active": payload.qr_code_is_active.strip(),
+        "package_contents_match_card": payload.package_contents_match_card.strip(),
+        "product_verified": payload.product_verified.strip(),
+    }
+
+    if any(not value for value in fields.values()):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="All required finished product control fields must be filled in",
+        )
+
+    order = (
+        db.query(VariantProductBatchTestOrder)
+        .filter(VariantProductBatchTestOrder.id == payload.ordered_test_id)
+        .first()
+    )
+    if not order:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Nie znaleziono partii do uzupełnienia formularza",
+        )
+
+    if order.sku != fields["sku"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Dane formularza nie pasują do wybranej partii",
+        )
+
+    for key, value in fields.items():
+        setattr(order, key, value)
+
+    order.batch_number = fields["product_batch_number"]
+    order.comment = (payload.comment or "").strip() or None
+    order.control_saved_at = datetime.utcnow()
+
+    control = VariantProductFinishedProductControl(
+        **fields,
+        comment=order.comment,
+    )
+    db.add(control)
+    db.commit()
+    db.refresh(control)
+    db.refresh(order)
+    return control
 
 
 @app.get("/api/integrations/settings", response_model=IntegrationSettingsResponseDTO)

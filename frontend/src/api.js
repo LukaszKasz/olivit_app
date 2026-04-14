@@ -1,18 +1,10 @@
 import axios from 'axios';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8001';
-const NEXO_API_BASE_URL = import.meta.env.VITE_NEXO_API_BASE_URL || 'http://localhost:5085';
 
 // Create axios instance with default config
 const api = axios.create({
     baseURL: API_BASE_URL,
-    headers: {
-        'Content-Type': 'application/json',
-    },
-});
-
-const nexoApi = axios.create({
-    baseURL: NEXO_API_BASE_URL,
     headers: {
         'Content-Type': 'application/json',
     },
@@ -64,17 +56,6 @@ export const authAPI = {
     },
 };
 
-export const ordersAPI = {
-    getOrders: async (limit = 10) => {
-        const response = await api.get(`/api/orders?limit=${limit}`);
-        return response.data;
-    },
-    getOrderDetails: async (orderId) => {
-        const response = await api.get(`/api/orders/${orderId}/details`);
-        return response.data;
-    }
-};
-
 export const integrationSettingsAPI = {
     getSettings: async () => {
         const response = await api.get('/api/integrations/settings');
@@ -86,20 +67,48 @@ export const integrationSettingsAPI = {
     },
 };
 
-export const nexoAPI = {
-    getSession: async () => {
-        const response = await nexoApi.get('/api/nexo/session');
-        return response.data;
-    },
-    login: async (operatorLogin, operatorPassword) => {
-        const response = await nexoApi.post('/api/nexo/login', {
-            operatorLogin,
-            operatorPassword,
+export const mainProductsAPI = {
+    getProducts: async (query = '') => {
+        const response = await api.get('/api/main-products', {
+            params: query ? { q: query } : {},
         });
         return response.data;
     },
-    getGoods: async () => {
-        const response = await nexoApi.get('/api/nexo/towary');
+    orderTests: async (payload) => {
+        const response = await api.post('/api/main-products/ordered-tests', payload);
+        return response.data;
+    },
+    getOrderedTests: async () => {
+        const response = await api.get('/api/main-products/ordered-tests');
+        return response.data;
+    },
+};
+
+export const variantProductsAPI = {
+    getProducts: async (query = '', page = 1, pageSize = 50) => {
+        const response = await api.get('/api/variant-products', {
+            params: {
+                ...(query ? { q: query } : {}),
+                page,
+                page_size: pageSize,
+            },
+        });
+        return response.data;
+    },
+    orderBatchTests: async (payload) => {
+        const response = await api.post('/api/variant-products/batches/ordered-tests', payload);
+        return response.data;
+    },
+    getOrderedBatchTests: async () => {
+        const response = await api.get('/api/variant-products/batches/ordered-tests');
+        return response.data;
+    },
+    createFinishedProductControl: async (payload) => {
+        const response = await api.post('/api/variant-products/finished-product-controls', payload);
+        return response.data;
+    },
+    getFinishedProductControls: async () => {
+        const response = await api.get('/api/variant-products/finished-product-controls');
         return response.data;
     },
 };

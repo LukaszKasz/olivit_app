@@ -30,7 +30,7 @@ function LoginForm() {
         try {
             const response = await authAPI.login(formData.username, formData.password);
             tokenManager.setToken(response.access_token);
-            navigate('/orders');
+            navigate('/main-products');
         } catch (err) {
             setError(
                 err.response?.data?.detail || t('login.errorInvalid')
