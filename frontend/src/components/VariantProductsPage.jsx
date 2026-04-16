@@ -27,6 +27,12 @@ function VariantProductsPage() {
         batchNumber: '',
         saving: false,
     });
+    const [selectedProductIds, setSelectedProductIds] = useState([]);
+    const [bulkBatchDialog, setBulkBatchDialog] = useState({
+        open: false,
+        saving: false,
+        rows: [],
+    });
 
     useEffect(() => {
         const timeoutId = setTimeout(async () => {
@@ -71,6 +77,24 @@ function VariantProductsPage() {
     const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
     const from = total === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
     const to = total === 0 ? 0 : Math.min(page * PAGE_SIZE, total);
+    const visibleProductIds = products.map((product) => product.id);
+    const allVisibleSelected = visibleProductIds.length > 0 && visibleProductIds.every((id) => selectedProductIds.includes(id));
+
+    const toggleProductSelection = (productId) => {
+        setSelectedProductIds((current) =>
+            current.includes(productId)
+                ? current.filter((id) => id !== productId)
+                : [...current, productId]
+        );
+    };
+
+    const toggleAllVisibleProducts = () => {
+        setSelectedProductIds((current) =>
+            allVisibleSelected
+                ? current.filter((id) => !visibleProductIds.includes(id))
+                : Array.from(new Set([...current, ...visibleProductIds]))
+        );
+    };
 
     const handleContextMenu = (event, product) => {
         event.preventDefault();
@@ -153,6 +177,80 @@ function VariantProductsPage() {
         run();
     };
 
+    const openBulkBatchDialog = () => {
+        const selectedProducts = products.filter((product) => selectedProductIds.includes(product.id));
+        if (selectedProducts.length === 0) {
+            return;
+        }
+
+        setBulkBatchDialog({
+            open: true,
+            saving: false,
+            rows: selectedProducts.map((product) => ({
+                id: product.id,
+                sku: product.sku,
+                name: product.name,
+                ean: product.ean,
+                batchNumber: '',
+            })),
+        });
+    };
+
+    const closeBulkBatchDialog = () => {
+        if (bulkBatchDialog.saving) {
+            return;
+        }
+
+        setBulkBatchDialog({
+            open: false,
+            saving: false,
+            rows: [],
+        });
+    };
+
+    const updateBulkBatchNumber = (productId, value) => {
+        setBulkBatchDialog((current) => ({
+            ...current,
+            rows: current.rows.map((row) =>
+                row.id === productId
+                    ? { ...row, batchNumber: value }
+                    : row
+            ),
+        }));
+    };
+
+    const handleBulkBatchSave = async () => {
+        try {
+            setBulkBatchDialog((current) => ({ ...current, saving: true }));
+            await Promise.all(
+                bulkBatchDialog.rows.map((row) =>
+                    variantProductsAPI.orderBatchTests({
+                        sku: row.sku,
+                        name: row.name,
+                        ean: row.ean,
+                        batch_number: row.batchNumber,
+                    })
+                )
+            );
+
+            setSuccess(`Dodano serie dla ${bulkBatchDialog.rows.length} zaznaczonych wariantów.`);
+            setError('');
+            setSelectedProductIds([]);
+            setBulkBatchDialog({
+                open: false,
+                saving: false,
+                rows: [],
+            });
+        } catch (err) {
+            setError(err?.response?.data?.detail || err.message || 'Nie udało się dodać serii dla zaznaczonych wariantów.');
+            setBulkBatchDialog((current) => ({ ...current, saving: false }));
+        }
+    };
+
+    const isBulkBatchSaveDisabled = bulkBatchDialog.rows.length === 0
+        || bulkBatchDialog.rows.some((row) => !row.batchNumber.trim())
+        || bulkBatchDialog.saving;
+
     return (
         <div className="w-full">
             <div className="mb-6 flex items-end justify-between gap-4">
@@ -164,6 +262,28 @@ function VariantProductsPage() {
                 </div>
                 <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600 shadow-sm">
                     Pozycji: <span className="font-semibold text-slate-900">{total}</span>
+                </div>
+            </div>
+
+            <div className="mb-4 flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600 shadow-sm">
+                <span>Zaznaczone: <span className="font-semibold text-slate-900">{selectedProductIds.length}</span></span>
+                <div className="flex items-center gap-2">
+                    <button
+                        type="button"
+                        onClick={openBulkBatchDialog}
+                        className="rounded-xl bg-slate-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                        disabled={selectedProductIds.length === 0}
+                    >
+                        Dodaj serię
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setSelectedProductIds([])}
+                        className="rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                        disabled={selectedProductIds.length === 0}
+                    >
+                        Wyczyść zaznaczenie
+                    </button>
                 </div>
             </div>
 
@@ -198,6 +318,15 @@ function VariantProductsPage() {
                     <table className="w-full text-left text-sm">
                         <thead className="bg-slate-50 text-xs uppercase tracking-[0.18em] text-slate-500">
                             <tr>
+                                <th className="px-6 py-4">
+                                    <input
+                                        type="checkbox"
+                                        checked={allVisibleSelected}
+                                        onChange={toggleAllVisibleProducts}
+                                        aria-label="Zaznacz wszystkie widoczne warianty"
+                                    />
+                                </th>
+                                <th className="px-6 py-4">Numer projektu</th>
                                 <th className="px-6 py-4">Numer wariantu</th>
                                 <th className="px-6 py-4">Nazwa</th>
                                 <th className="px-6 py-4">EAN</th>
@@ -206,13 +335,13 @@ function VariantProductsPage() {
                         <tbody>
                             {loading ? (
                                 <tr className="border-t border-slate-100">
-                                    <td colSpan="3" className="px-6 py-10 text-center text-slate-500">
+                                    <td colSpan="5" className="px-6 py-10 text-center text-slate-500">
                                         Ładowanie wariantów produktów...
                                     </td>
                                 </tr>
                             ) : products.length === 0 ? (
                                 <tr className="border-t border-slate-100">
-                                    <td colSpan="3" className="px-6 py-10 text-center text-slate-500">
+                                    <td colSpan="5" className="px-6 py-10 text-center text-slate-500">
                                         Brak wyników dla podanego wyszukiwania.
                                     </td>
                                 </tr>
@@ -223,6 +352,18 @@ function VariantProductsPage() {
                                         className="border-t border-slate-100 hover:bg-slate-50/80"
                                         onContextMenu={(event) => handleContextMenu(event, product)}
                                     >
+                                        <td className="px-6 py-4">
+                                            <input
+                                                type="checkbox"
+                                                checked={selectedProductIds.includes(product.id)}
+                                                onChange={() => toggleProductSelection(product.id)}
+                                                onClick={(event) => event.stopPropagation()}
+                                                aria-label={`Zaznacz wariant ${product.sku}`}
+                                            />
+                                        </td>
+                                        <td className="whitespace-nowrap px-6 py-4 text-slate-700">
+                                            {product.project_number || '—'}
+                                        </td>
                                         <td className="whitespace-nowrap px-6 py-4 font-semibold text-slate-900">
                                             {product.sku}
                                         </td>
@@ -353,6 +494,71 @@ function VariantProductsPage() {
                                 className="rounded-2xl bg-slate-900 px-5 py-3 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
                             >
                                 {orderDialog.saving ? 'Zapisywanie...' : 'Zapisz'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {bulkBatchDialog.open && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/35 p-4">
+                    <div className="w-full max-w-5xl rounded-3xl border border-slate-200 bg-white shadow-2xl">
+                        <div className="border-b border-slate-200 px-6 py-5">
+                            <h2 className="text-2xl font-semibold text-slate-900">Dodaj serię</h2>
+                            <p className="mt-2 text-sm text-slate-600">
+                                Uzupełnij numer serii dla zaznaczonych wariantów.
+                            </p>
+                        </div>
+
+                        <div className="max-h-[65vh] overflow-auto px-6 py-5">
+                            <div className="overflow-hidden rounded-3xl border border-slate-200">
+                                <table className="w-full text-left text-sm">
+                                    <thead className="bg-slate-50 text-xs uppercase tracking-[0.18em] text-slate-500">
+                                        <tr>
+                                            <th className="px-4 py-4">Numer projektu</th>
+                                            <th className="px-4 py-4">Numer wariantu</th>
+                                            <th className="px-4 py-4">Nazwa</th>
+                                            <th className="px-4 py-4">Numer serii</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {bulkBatchDialog.rows.map((row) => (
+                                            <tr key={row.id} className="border-t border-slate-100">
+                                                <td className="whitespace-nowrap px-4 py-4 text-slate-700">{row.project_number || '—'}</td>
+                                                <td className="whitespace-nowrap px-4 py-4 font-semibold text-slate-900">{row.sku}</td>
+                                                <td className="px-4 py-4 text-slate-700">{row.name}</td>
+                                                <td className="px-4 py-4">
+                                                    <input
+                                                        type="text"
+                                                        value={row.batchNumber}
+                                                        onChange={(event) => updateBulkBatchNumber(row.id, event.target.value)}
+                                                        placeholder="Wpisz serię"
+                                                        className="w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-500 focus:bg-white"
+                                                    />
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <div className="flex justify-end gap-3 border-t border-slate-200 px-6 py-5">
+                            <button
+                                type="button"
+                                onClick={closeBulkBatchDialog}
+                                className="rounded-2xl border border-slate-300 px-5 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                                disabled={bulkBatchDialog.saving}
+                            >
+                                Anuluj
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleBulkBatchSave}
+                                disabled={isBulkBatchSaveDisabled}
+                                className="rounded-2xl bg-slate-900 px-5 py-3 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                                {bulkBatchDialog.saving ? 'Zapisywanie...' : 'Zapisz'}
                             </button>
                         </div>
                     </div>

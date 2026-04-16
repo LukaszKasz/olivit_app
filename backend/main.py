@@ -1,20 +1,45 @@
 from datetime import timedelta
 from datetime import datetime, timezone
+from io import BytesIO
+from pathlib import Path
 from typing import Optional
 
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, EmailStr
 from sqlalchemy import inspect, or_, text
 from sqlalchemy.orm import Session
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+from reportlab.lib.units import mm
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 from database import engine, get_db, Base, SessionLocal
 from main_product_orders_api import MainProductTestOrderCreate, MainProductTestOrderResponse
-from main_products_api import MainProductResponse
+from main_products_api import MainProductResponse, ProductDetailedParameterResponse
 from main_products_seed import MAIN_PRODUCTS
-from models import User, IntegrationSettings, MainProduct, MainProductTestOrder, VariantProduct, VariantProductBatchTestOrder, VariantProductFinishedProductControl
+from models import (
+    User,
+    IntegrationSettings,
+    MainProduct,
+    MainProductTestOrder,
+    VariantProduct,
+    VariantProductBatchTestOrder,
+    VariantProductBatchTestOrderArchive,
+    VariantProductFinishedProductControl,
+    ProductDetailedParameter,
+)
 from variant_products_api import VariantProductResponse, VariantProductsPageResponse
-from variant_product_batch_orders_api import VariantProductBatchTestOrderCreate, VariantProductBatchTestOrderResponse
+from variant_product_batch_orders_api import (
+    VariantProductBatchArchiveRequest,
+    VariantProductBatchCoARequest,
+    VariantProductBatchTestOrderCreate,
+    VariantProductBatchTestOrderResponse,
+)
 from variant_product_finished_product_controls_api import (
     VariantProductFinishedProductControlCreate,
     VariantProductFinishedProductControlResponse,
@@ -61,6 +86,199 @@ from services.magento import (
     MAGENTO_ACCESS_TOKEN_SECRET,
     MAGENTO_VERIFY_SSL,
 )
+
+MAIN_PRODUCT_NUMBERS = sorted({project_number for project_number, _ in MAIN_PRODUCTS}, key=len, reverse=True)
+PDF_FONT_NAME = "DejaVuSans"
+PDF_FONT_PATH = Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf")
+
+if PDF_FONT_PATH.exists() and PDF_FONT_NAME not in pdfmetrics.getRegisteredFontNames():
+    pdfmetrics.registerFont(TTFont(PDF_FONT_NAME, str(PDF_FONT_PATH)))
+
+
+def get_project_number_from_variant_sku(sku: str) -> str | None:
+    value = (sku or "").strip()
+    for project_number in MAIN_PRODUCT_NUMBERS:
+        if value.startswith(project_number):
+            return project_number
+    return None
+
+
+def serialize_variant_product(product: VariantProduct) -> dict:
+    return {
+        "id": product.id,
+        "sku": product.sku,
+        "project_number": get_project_number_from_variant_sku(product.sku),
+        "name": product.name,
+        "ean": product.ean,
+        "order_index": product.order_index,
+    }
+
+
+def serialize_variant_batch_row(row: VariantProductBatchTestOrder | VariantProductBatchTestOrderArchive) -> dict:
+    return {
+        "id": row.id,
+        "sku": row.sku,
+        "project_number": get_project_number_from_variant_sku(row.sku),
+        "name": row.name,
+        "ean": row.ean,
+        "laboratory_name": row.laboratory_name,
+        "batch_number": row.batch_number,
+        "batch_added_at": row.batch_added_at,
+        "ordered_at": row.ordered_at,
+        "printed_material_type": row.printed_material_type,
+        "product_name": row.product_name,
+        "product_project_number": row.product_project_number,
+        "product_ean_number": row.product_ean_number,
+        "product_batch_number": row.product_batch_number,
+        "product_expiry_date": row.product_expiry_date,
+        "control_date": row.control_date,
+        "market_label_version": row.market_label_version,
+        "active_substances_match_pds": row.active_substances_match_pds,
+        "label_version_matches_used_version": row.label_version_matches_used_version,
+        "has_printing_errors": row.has_printing_errors,
+        "has_graphic_design_errors": row.has_graphic_design_errors,
+        "print_correctness": row.print_correctness,
+        "has_labeling_errors": row.has_labeling_errors,
+        "cap_is_correct": row.cap_is_correct,
+        "induction_seal_weld_correct": row.induction_seal_weld_correct,
+        "induction_seal_opening_correct": row.induction_seal_opening_correct,
+        "package_is_dirty": row.package_is_dirty,
+        "package_is_damaged": row.package_is_damaged,
+        "qr_code_is_active": row.qr_code_is_active,
+        "package_contents_match_card": row.package_contents_match_card,
+        "product_verified": row.product_verified,
+        "comment": row.comment,
+        "control_saved_at": row.control_saved_at,
+        "archived_at": getattr(row, "archived_at", None),
+    }
+
+
+def format_date_for_pdf(value: datetime | str | None) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, datetime):
+        return value.astimezone(timezone.utc).strftime("%d.%m.%Y")
+    return str(value)
+
+
+def build_coa_pdf(rows: list[VariantProductBatchTestOrder], details: list[ProductDetailedParameter], project_number: str) -> bytes:
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        rightMargin=12 * mm,
+        leftMargin=12 * mm,
+        topMargin=12 * mm,
+        bottomMargin=12 * mm,
+    )
+    styles = getSampleStyleSheet()
+    base_style = ParagraphStyle(
+        "Base",
+        parent=styles["BodyText"],
+        fontName=PDF_FONT_NAME,
+        fontSize=9,
+        leading=12,
+        spaceAfter=0,
+    )
+    title_style = ParagraphStyle("Title", parent=base_style, fontSize=16, leading=20, alignment=1)
+    heading_style = ParagraphStyle("Heading", parent=base_style, fontSize=10, leading=13, alignment=1)
+    section_style = ParagraphStyle("Section", parent=base_style, fontSize=10, leading=13)
+    tiny_style = ParagraphStyle("Tiny", parent=base_style, fontSize=8, leading=10)
+
+    story = [
+        Paragraph("CERTIFICATE OF ANALYSIS / CERTYFIKAT ANALIZY", title_style),
+        Spacer(1, 8 * mm),
+        Paragraph(f"<b>CERTIFICATE ISSUE DATE</b><br/>{datetime.now().strftime('%d.%m.%Y')}", section_style),
+        Spacer(1, 6 * mm),
+    ]
+
+    product_table_data = [[
+        Paragraph("<b>PRODUCT NUMBER</b>", tiny_style),
+        Paragraph("<b>NAME OF PRODUCT</b>", tiny_style),
+        Paragraph("<b>LOT NUMBER</b>", tiny_style),
+        Paragraph("<b>BEST BEFORE END</b>", tiny_style),
+    ]]
+    for row in rows:
+        product_table_data.append([
+            Paragraph(row.sku, base_style),
+            Paragraph(row.name, base_style),
+            Paragraph(row.batch_number, base_style),
+            Paragraph(row.product_expiry_date or "", base_style),
+        ])
+
+    product_table = Table(product_table_data, colWidths=[34 * mm, 86 * mm, 28 * mm, 32 * mm], repeatRows=1)
+    product_table.setStyle(TableStyle([
+        ("FONTNAME", (0, 0), (-1, -1), PDF_FONT_NAME),
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#e2e8f0")),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#94a3b8")),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("TOPPADDING", (0, 0), (-1, -1), 6),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+    ]))
+    story.extend([product_table, Spacer(1, 10 * mm)])
+
+    parameter_table_data = [[
+        Paragraph("<b>Parameters / Parametry</b>", tiny_style),
+        Paragraph("<b>Requirement / Wymaganie</b>", tiny_style),
+        Paragraph("<b>Method / Metoda</b>", tiny_style),
+        Paragraph("<b>Confirmation / Potwierdzenie</b>", tiny_style),
+    ]]
+    group_row_indexes: list[int] = []
+    current_group = None
+    for detail in details:
+        group_label = f"{detail.parameter_type_en} / {detail.parameter_type_pl}"
+        if group_label != current_group:
+            group_row_indexes.append(len(parameter_table_data))
+            parameter_table_data.append([
+                Paragraph(f"<b>{group_label}</b>", base_style),
+                Paragraph("", base_style),
+                Paragraph("", base_style),
+                Paragraph("", base_style),
+            ])
+            current_group = group_label
+
+        parameter_table_data.append([
+            Paragraph(f"{detail.parameter_name_en} / {detail.parameter_name_pl}", base_style),
+            Paragraph(f"{detail.requirement_en} / {detail.requirement_pl}", base_style),
+            Paragraph(f"{detail.method_en} / {detail.method_pl}", base_style),
+            Paragraph(f"{detail.confirmation_en or ''} / {detail.confirmation_pl or ''}".strip(" /"), base_style),
+        ])
+
+    parameter_table = Table(parameter_table_data, colWidths=[72 * mm, 40 * mm, 38 * mm, 30 * mm], repeatRows=1)
+    parameter_table_style_commands = [
+        ("FONTNAME", (0, 0), (-1, -1), PDF_FONT_NAME),
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#e2e8f0")),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#94a3b8")),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("TOPPADDING", (0, 0), (-1, -1), 5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+    ]
+    for row_index in group_row_indexes:
+        parameter_table_style_commands.extend([
+            ("BACKGROUND", (0, row_index), (-1, row_index), colors.HexColor("#fcd34d")),
+            ("TEXTCOLOR", (0, row_index), (-1, row_index), colors.HexColor("#78350f")),
+            ("SPAN", (0, row_index), (-1, row_index)),
+        ])
+
+    parameter_table.setStyle(TableStyle(parameter_table_style_commands))
+    story.extend([parameter_table, Spacer(1, 8 * mm)])
+
+    story.extend([
+        Paragraph("<b>LINKED DOCUMENTS / DOKUMENTY ZWIĄZANE:</b>", section_style),
+        Spacer(1, 8 * mm),
+        Paragraph("<b>CONCLUSION / WNIOSEK:</b>", section_style),
+        Spacer(1, 2 * mm),
+        Paragraph(
+            (
+                f"The product meets the requirements of the product specification in accordance with the product sheet {project_number}.<br/>"
+                f"Produkt spełnia wymagania specyfikacji produktu zgodnie z kartą produktu {project_number}."
+            ),
+            base_style,
+        ),
+    ])
+
+    doc.build(story)
+    return buffer.getvalue()
 
 # Create database tables
 Base.metadata.create_all(bind=engine)
@@ -612,6 +830,52 @@ def get_main_products(
     return query.order_by(MainProduct.order_index.asc()).all()
 
 
+@app.get("/api/main-products/{product_id}/details", response_model=list[ProductDetailedParameterResponse])
+def get_main_product_details(
+    product_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _ = current_user
+
+    product = db.query(MainProduct).filter(MainProduct.id == product_id).first()
+    if not product:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Product not found",
+        )
+
+    if product.id_szczegolow_produktu is None:
+        return []
+
+    return (
+        db.query(ProductDetailedParameter)
+        .filter(ProductDetailedParameter.id_szczegolow_produktu == product.id_szczegolow_produktu)
+        .order_by(ProductDetailedParameter.id.asc())
+        .all()
+    )
+
+
+@app.get("/api/variant-products/projects/{project_number}/details", response_model=list[ProductDetailedParameterResponse])
+def get_variant_project_details(
+    project_number: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _ = current_user
+
+    product = db.query(MainProduct).filter(MainProduct.project_number == project_number).first()
+    if not product or product.id_szczegolow_produktu is None:
+        return []
+
+    return (
+        db.query(ProductDetailedParameter)
+        .filter(ProductDetailedParameter.id_szczegolow_produktu == product.id_szczegolow_produktu)
+        .order_by(ProductDetailedParameter.id.asc())
+        .all()
+    )
+
+
 @app.get("/api/variant-products", response_model=VariantProductsPageResponse)
 def get_variant_products(
     q: Optional[str] = None,
@@ -645,7 +909,7 @@ def get_variant_products(
     )
 
     return VariantProductsPageResponse(
-        items=items,
+        items=[serialize_variant_product(item) for item in items],
         total=total,
         page=page,
         page_size=page_size,
@@ -698,11 +962,26 @@ def get_variant_product_batch_test_orders(
     current_user: User = Depends(get_current_user),
 ):
     _ = current_user
-    return (
+    rows = (
         db.query(VariantProductBatchTestOrder)
         .order_by(VariantProductBatchTestOrder.batch_added_at.desc(), VariantProductBatchTestOrder.id.desc())
         .all()
     )
+    return [serialize_variant_batch_row(row) for row in rows]
+
+
+@app.get("/api/variant-products/batches/archive", response_model=list[VariantProductBatchTestOrderResponse])
+def get_variant_product_batch_test_archive(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _ = current_user
+    rows = (
+        db.query(VariantProductBatchTestOrderArchive)
+        .order_by(VariantProductBatchTestOrderArchive.archived_at.desc(), VariantProductBatchTestOrderArchive.id.desc())
+        .all()
+    )
+    return [serialize_variant_batch_row(row) for row in rows]
 
 
 @app.post("/api/variant-products/batches/ordered-tests", response_model=VariantProductBatchTestOrderResponse, status_code=status.HTTP_201_CREATED)
@@ -737,7 +1016,150 @@ def create_variant_product_batch_test_order(
     db.add(order)
     db.commit()
     db.refresh(order)
-    return order
+    return serialize_variant_batch_row(order)
+
+
+@app.post("/api/variant-products/batches/archive", status_code=status.HTTP_201_CREATED)
+def archive_variant_product_batch_test_orders(
+    payload: VariantProductBatchArchiveRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _ = current_user
+
+    ids = sorted(set(payload.ids))
+    if not ids:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="ids are required",
+        )
+
+    rows = (
+        db.query(VariantProductBatchTestOrder)
+        .filter(VariantProductBatchTestOrder.id.in_(ids))
+        .all()
+    )
+    if not rows:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No rows found to archive",
+        )
+
+    for row in rows:
+        db.add(
+            VariantProductBatchTestOrderArchive(
+                sku=row.sku,
+                name=row.name,
+                ean=row.ean,
+                laboratory_name=row.laboratory_name,
+                batch_number=row.batch_number,
+                batch_added_at=row.batch_added_at,
+                ordered_at=row.ordered_at,
+                printed_material_type=row.printed_material_type,
+                product_name=row.product_name,
+                product_project_number=row.product_project_number,
+                product_ean_number=row.product_ean_number,
+                product_batch_number=row.product_batch_number,
+                product_expiry_date=row.product_expiry_date,
+                control_date=row.control_date,
+                market_label_version=row.market_label_version,
+                active_substances_match_pds=row.active_substances_match_pds,
+                label_version_matches_used_version=row.label_version_matches_used_version,
+                has_printing_errors=row.has_printing_errors,
+                has_graphic_design_errors=row.has_graphic_design_errors,
+                print_correctness=row.print_correctness,
+                has_labeling_errors=row.has_labeling_errors,
+                cap_is_correct=row.cap_is_correct,
+                induction_seal_weld_correct=row.induction_seal_weld_correct,
+                induction_seal_opening_correct=row.induction_seal_opening_correct,
+                package_is_dirty=row.package_is_dirty,
+                package_is_damaged=row.package_is_damaged,
+                qr_code_is_active=row.qr_code_is_active,
+                package_contents_match_card=row.package_contents_match_card,
+                product_verified=row.product_verified,
+                comment=row.comment,
+                control_saved_at=row.control_saved_at,
+                archived_at=datetime.now(timezone.utc),
+            )
+        )
+
+    for row in rows:
+        db.delete(row)
+
+    db.commit()
+    return {"archived_count": len(rows)}
+
+
+@app.post("/api/variant-products/batches/coa")
+def generate_variant_product_batch_coa(
+    payload: VariantProductBatchCoARequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _ = current_user
+
+    ids = sorted(set(payload.ids))
+    if not ids:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="ids are required",
+        )
+
+    rows = (
+        db.query(VariantProductBatchTestOrder)
+        .filter(VariantProductBatchTestOrder.id.in_(ids))
+        .order_by(VariantProductBatchTestOrder.id.asc())
+        .all()
+    )
+    if not rows:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No rows found for CoA",
+        )
+
+    project_numbers = {get_project_number_from_variant_sku(row.sku) for row in rows}
+    project_numbers.discard(None)
+    if len(project_numbers) != 1:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="All selected rows must have the same project number",
+        )
+
+    project_number = next(iter(project_numbers))
+    main_product = db.query(MainProduct).filter(MainProduct.project_number == project_number).first()
+    if not main_product or main_product.id_szczegolow_produktu is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No detailed parameters found for project {project_number}",
+        )
+
+    detail_ids = sorted(set(payload.detail_ids))
+    if not detail_ids:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="detail_ids are required",
+        )
+
+    details = (
+        db.query(ProductDetailedParameter)
+        .filter(ProductDetailedParameter.id_szczegolow_produktu == main_product.id_szczegolow_produktu)
+        .filter(ProductDetailedParameter.id.in_(detail_ids))
+        .order_by(ProductDetailedParameter.id.asc())
+        .all()
+    )
+    if not details:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No detailed parameters found for project {project_number}",
+        )
+
+    pdf_bytes = build_coa_pdf(rows, details, project_number)
+    filename = f"coa_{project_number}_{datetime.now().strftime('%Y%m%d')}.pdf"
+    return StreamingResponse(
+        BytesIO(pdf_bytes),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @app.get("/api/variant-products/finished-product-controls", response_model=list[VariantProductFinishedProductControlResponse])

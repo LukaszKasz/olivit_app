@@ -35,7 +35,16 @@ function App() {
                     <Route path="/product-variants" element={<VariantProductsPage />} />
                     <Route path="/product-variants/batches/ordered-tests" element={<VariantProductBatchOrderedTestsPage />} />
                     <Route path="/product-variants/finished-product-control" element={<VariantProductFinishedProductControlPage />} />
-                    <Route path="/product-variants/batches/archive" element={<MenuPlaceholderPage title="Warianty produktów / Partie / Archiwum" />} />
+                    <Route
+                        path="/product-variants/batches/archive"
+                        element={
+                            <VariantProductBatchOrderedTestsPage
+                                title="Warianty produktów / Partie / Archiwum"
+                                description="Dane pobierane z tabeli archiwum partii wariantów w bazie PostgreSQL."
+                                archiveMode
+                            />
+                        }
+                    />
                     <Route path="/settings" element={<SettingsPage />} />
                 </Route>
             </Routes>

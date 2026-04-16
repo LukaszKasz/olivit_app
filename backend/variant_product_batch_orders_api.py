@@ -12,9 +12,19 @@ class VariantProductBatchTestOrderCreate(BaseModel):
     batch_number: str
 
 
+class VariantProductBatchArchiveRequest(BaseModel):
+    ids: list[int]
+
+
+class VariantProductBatchCoARequest(BaseModel):
+    ids: list[int]
+    detail_ids: list[int]
+
+
 class VariantProductBatchTestOrderResponse(BaseModel):
     id: int
     sku: str
+    project_number: Optional[str] = None
     name: str
     ean: str
     laboratory_name: Optional[str] = None
@@ -45,6 +55,7 @@ class VariantProductBatchTestOrderResponse(BaseModel):
     product_verified: Optional[str] = None
     comment: Optional[str] = None
     control_saved_at: Optional[datetime] = None
+    archived_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True

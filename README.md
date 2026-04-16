@@ -1,4 +1,4 @@
-# Olivit zarządzanie jakością
+# Olivit zarzadzanie jakoscia
 
 Aplikacja do zarzadzania zamowieniami uruchamiana lokalnie przez Docker Desktop.
 
@@ -7,10 +7,20 @@ Aplikacja do zarzadzania zamowieniami uruchamiana lokalnie przez Docker Desktop.
 - Docker Desktop
 - Docker Compose v2
 
-## Uruchomienie
+## Uruchomienie na Windows
+
+W PowerShell:
+
+```powershell
+cd C:\sciezka\do\olivit_app
+Copy-Item .env.example .env
+docker compose up --build -d
+```
+
+## Uruchomienie na Linux / macOS
 
 ```bash
-cd /home/lkasztelan/projekty/olivit_app
+cd /sciezka/do/olivit_app
 cp .env.example .env
 docker compose up --build -d
 ```

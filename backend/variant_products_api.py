@@ -4,6 +4,7 @@ from pydantic import BaseModel
 class VariantProductResponse(BaseModel):
     id: int
     sku: str
+    project_number: str | None = None
     name: str
     ean: str
     order_index: int

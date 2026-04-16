@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { variantProductsAPI } from '../api';
 
 const MATERIAL_TYPES = ['Etykieta+opakowanie', 'Kartonik'];
@@ -89,6 +89,7 @@ function VariantProductBatchOrderedTestsPage({
     title = 'Warianty produktów / Partie / Badania zlecone',
     description = 'Dane pobierane z tabeli zleconych badań partii wariantów w bazie PostgreSQL.',
     enableFinishedProductControl = false,
+    archiveMode = false,
 }) {
     const [rows, setRows] = useState([]);
     const [pickerRows, setPickerRows] = useState([]);
@@ -111,6 +112,20 @@ function VariantProductBatchOrderedTestsPage({
         saving: false,
         form: createInitialForm(),
     });
+    const [selectedRowIds, setSelectedRowIds] = useState([]);
+    const [coaDialog, setCoaDialog] = useState({
+        open: false,
+        loading: false,
+        saving: false,
+        projectNumber: '',
+        details: [],
+        selectedDetailIds: [],
+    });
+    const [documentsDialog, setDocumentsDialog] = useState({
+        open: false,
+        files: Array(6).fill(null),
+        previewIndex: null,
+    });
 
     useEffect(() => {
         const loadRows = async () => {
@@ -118,7 +133,9 @@ function VariantProductBatchOrderedTestsPage({
                 setLoading(true);
                 const data = enableFinishedProductControl
                     ? await variantProductsAPI.getFinishedProductControls()
-                    : await variantProductsAPI.getOrderedBatchTests();
+                    : archiveMode
+                        ? await variantProductsAPI.getArchivedBatchTests()
+                        : await variantProductsAPI.getOrderedBatchTests();
                 setRows(Array.isArray(data) ? data : []);
                 setError('');
             } catch (err) {
@@ -135,7 +152,7 @@ function VariantProductBatchOrderedTestsPage({
         };
 
         loadRows();
-    }, [enableFinishedProductControl]);
+    }, [archiveMode, enableFinishedProductControl]);
 
     useEffect(() => {
         if (!contextMenu.visible) {
@@ -269,6 +286,204 @@ function VariantProductBatchOrderedTestsPage({
             String(field || '').toLowerCase().includes(value)
         );
     });
+    const groupedCoaDetails = coaDialog.details.reduce((groups, detail) => {
+        const key = `${detail.parameter_type_en} / ${detail.parameter_type_pl}`;
+        const existingGroup = groups.find((group) => group.label === key);
+
+        if (existingGroup) {
+            existingGroup.items.push(detail);
+            return groups;
+        }
+
+        groups.push({
+            label: key,
+            items: [detail],
+        });
+        return groups;
+    }, []);
+    const visibleRowIds = filteredRows.map((row) => row.id);
+    const allVisibleSelected = visibleRowIds.length > 0 && visibleRowIds.every((id) => selectedRowIds.includes(id));
+
+    const toggleRowSelection = (rowId) => {
+        setSelectedRowIds((current) =>
+            current.includes(rowId)
+                ? current.filter((id) => id !== rowId)
+                : [...current, rowId]
+        );
+    };
+
+    const toggleAllVisibleRows = () => {
+        setSelectedRowIds((current) =>
+            allVisibleSelected
+                ? current.filter((id) => !visibleRowIds.includes(id))
+                : Array.from(new Set([...current, ...visibleRowIds]))
+        );
+    };
+
+    const handleArchiveSelected = async () => {
+        try {
+            await variantProductsAPI.archiveBatchTests(selectedRowIds);
+            const updatedRows = await variantProductsAPI.getOrderedBatchTests();
+            setRows(Array.isArray(updatedRows) ? updatedRows : []);
+            setSelectedRowIds([]);
+            setSuccess(`Przeniesiono do archiwum ${selectedRowIds.length} pozycji.`);
+            setError('');
+        } catch (err) {
+            setError(err?.response?.data?.detail || err.message || 'Nie udało się przenieść pozycji do archiwum.');
+        }
+    };
+
+    const handleGenerateCoA = async () => {
+        const selectedRows = rows.filter((row) => selectedRowIds.includes(row.id));
+        const projectNumbers = Array.from(new Set(selectedRows.map((row) => row.project_number).filter(Boolean)));
+
+        if (projectNumbers.length !== 1) {
+            setError('Zaznaczone pozycje do CoA muszą mieć ten sam numer projektu.');
+            return;
+        }
+
+        try {
+            setCoaDialog({
+                open: true,
+                loading: true,
+                saving: false,
+                projectNumber: projectNumbers[0],
+                details: [],
+                selectedDetailIds: [],
+            });
+            const details = await variantProductsAPI.getProjectDetails(projectNumbers[0]);
+            setCoaDialog({
+                open: true,
+                loading: false,
+                saving: false,
+                projectNumber: projectNumbers[0],
+                details: Array.isArray(details) ? details : [],
+                selectedDetailIds: Array.isArray(details) ? details.map((detail) => detail.id) : [],
+            });
+            setError('');
+        } catch (err) {
+            setCoaDialog({
+                open: false,
+                loading: false,
+                saving: false,
+                projectNumber: '',
+                details: [],
+                selectedDetailIds: [],
+            });
+            setError(err?.response?.data?.detail || err.message || 'Nie udało się pobrać informacji szczegółowych do CoA.');
+        }
+    };
+
+    const closeCoaDialog = () => {
+        if (coaDialog.saving) {
+            return;
+        }
+        setCoaDialog({
+            open: false,
+            loading: false,
+            saving: false,
+            projectNumber: '',
+            details: [],
+            selectedDetailIds: [],
+        });
+    };
+
+    const toggleCoaDetail = (detailId) => {
+        setCoaDialog((current) => ({
+            ...current,
+            selectedDetailIds: current.selectedDetailIds.includes(detailId)
+                ? current.selectedDetailIds.filter((id) => id !== detailId)
+                : [...current.selectedDetailIds, detailId],
+        }));
+    };
+
+    const toggleAllCoaDetails = () => {
+        setCoaDialog((current) => ({
+            ...current,
+            selectedDetailIds: current.selectedDetailIds.length === current.details.length
+                ? []
+                : current.details.map((detail) => detail.id),
+        }));
+    };
+
+    const handleConfirmGenerateCoA = async () => {
+        try {
+            setCoaDialog((current) => ({ ...current, saving: true }));
+            const response = await variantProductsAPI.generateBatchCoA({
+                ids: selectedRowIds,
+                detail_ids: coaDialog.selectedDetailIds,
+            });
+            const blob = new Blob([response.data], { type: 'application/pdf' });
+            const downloadUrl = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            const disposition = response.headers['content-disposition'] || '';
+            const fileNameMatch = disposition.match(/filename="([^"]+)"/);
+            link.href = downloadUrl;
+            link.download = fileNameMatch?.[1] || 'certificate_of_analysis.pdf';
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            window.URL.revokeObjectURL(downloadUrl);
+            closeCoaDialog();
+            setError('');
+        } catch (err) {
+            setError(err?.response?.data?.detail || err.message || 'Nie udało się wygenerować CoA.');
+            setCoaDialog((current) => ({ ...current, saving: false }));
+        }
+    };
+
+    const openDocumentsDialog = () => {
+        setDocumentsDialog((current) => ({
+            ...current,
+            open: true,
+        }));
+    };
+
+    const closeDocumentsDialog = () => {
+        documentsDialog.files.forEach((file) => {
+            if (file?.previewUrl) {
+                URL.revokeObjectURL(file.previewUrl);
+            }
+        });
+        setDocumentsDialog((current) => ({
+            ...current,
+            open: false,
+            files: Array(6).fill(null),
+            previewIndex: null,
+        }));
+    };
+
+    const updateDocumentSlot = (index, file) => {
+        setDocumentsDialog((current) => {
+            const nextFiles = [...current.files];
+            if (nextFiles[index]?.previewUrl) {
+                URL.revokeObjectURL(nextFiles[index].previewUrl);
+            }
+            nextFiles[index] = file
+                ? {
+                    file,
+                    name: file.name,
+                    previewUrl: URL.createObjectURL(file),
+                }
+                : null;
+            return {
+                ...current,
+                files: nextFiles,
+                previewIndex: file ? index : current.previewIndex === index ? null : current.previewIndex,
+            };
+        });
+    };
+
+    const handleSaveDocuments = () => {
+        const selectedDocumentsCount = documentsDialog.files.filter(Boolean).length;
+        setSuccess(`Dodano ${selectedDocumentsCount} dokumentów do zaznaczonych pozycji.`);
+        setError('');
+        closeDocumentsDialog();
+    };
+
+    const previewDocument = documentsDialog.previewIndex !== null
+        ? documentsDialog.files[documentsDialog.previewIndex]
+        : null;
 
     return (
         <div className="w-full">
@@ -290,6 +505,50 @@ function VariantProductBatchOrderedTestsPage({
                     <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600 shadow-sm">
                         Pozycji: <span className="font-semibold text-slate-900">{rows.length}</span>
                     </div>
+                </div>
+            </div>
+
+            <div className="mb-4 flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600 shadow-sm">
+                <span>Zaznaczone: <span className="font-semibold text-slate-900">{selectedRowIds.length}</span></span>
+                <div className="flex items-center gap-2">
+                    {!enableFinishedProductControl && !archiveMode && (
+                        <button
+                            type="button"
+                            onClick={handleGenerateCoA}
+                            className="rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                            disabled={selectedRowIds.length === 0}
+                        >
+                            Generuj CoA
+                        </button>
+                    )}
+                    {!enableFinishedProductControl && !archiveMode && (
+                        <button
+                            type="button"
+                            onClick={openDocumentsDialog}
+                            className="rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                            disabled={selectedRowIds.length === 0}
+                        >
+                            Dodaj dokumenty
+                        </button>
+                    )}
+                    {!enableFinishedProductControl && !archiveMode && (
+                        <button
+                            type="button"
+                            onClick={handleArchiveSelected}
+                            className="rounded-xl bg-slate-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                            disabled={selectedRowIds.length === 0}
+                        >
+                            Przenieś do archiwum
+                        </button>
+                    )}
+                    <button
+                        type="button"
+                        onClick={() => setSelectedRowIds([])}
+                        className="rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                        disabled={selectedRowIds.length === 0}
+                    >
+                        Wyczyść zaznaczenie
+                    </button>
                 </div>
             </div>
 
@@ -325,6 +584,15 @@ function VariantProductBatchOrderedTestsPage({
                         <thead className="bg-slate-50 text-xs uppercase tracking-[0.18em] text-slate-500">
                             {enableFinishedProductControl ? (
                                 <tr>
+                                    <th className="px-6 py-4">
+                                        <input
+                                            type="checkbox"
+                                            checked={allVisibleSelected}
+                                            onChange={toggleAllVisibleRows}
+                                            aria-label="Zaznacz wszystkie widoczne wiersze"
+                                        />
+                                    </th>
+                                    <th className="px-6 py-4">Numer projektu</th>
                                     <th className="px-6 py-4">Numer wariantu</th>
                                     <th className="w-[22rem] min-w-[22rem] px-6 py-4">Nazwa</th>
                                     <th className="px-6 py-4">EAN</th>
@@ -338,6 +606,15 @@ function VariantProductBatchOrderedTestsPage({
                                 </tr>
                             ) : (
                                 <tr>
+                                    <th className="px-6 py-4">
+                                        <input
+                                            type="checkbox"
+                                            checked={allVisibleSelected}
+                                            onChange={toggleAllVisibleRows}
+                                            aria-label="Zaznacz wszystkie widoczne wiersze"
+                                        />
+                                    </th>
+                                    <th className="px-6 py-4">Numer projektu</th>
                                     <th className="px-6 py-4">Numer wariantu</th>
                                     <th className="w-[22rem] min-w-[22rem] px-6 py-4">Nazwa</th>
                                     <th className="px-6 py-4">EAN</th>
@@ -374,13 +651,13 @@ function VariantProductBatchOrderedTestsPage({
                         <tbody>
                             {loading ? (
                                 <tr className="border-t border-slate-100">
-                                    <td colSpan={enableFinishedProductControl ? 10 : 30} className="px-6 py-10 text-center text-slate-500">
+                                    <td colSpan={enableFinishedProductControl ? 12 : 32} className="px-6 py-10 text-center text-slate-500">
                                         {enableFinishedProductControl ? 'Ładowanie kontroli produktu gotowego...' : 'Ładowanie zleconych badań partii...'}
                                     </td>
                                 </tr>
                             ) : filteredRows.length === 0 ? (
                                 <tr className="border-t border-slate-100">
-                                    <td colSpan={enableFinishedProductControl ? 10 : 30} className="px-6 py-10 text-center text-slate-500">
+                                    <td colSpan={enableFinishedProductControl ? 12 : 32} className="px-6 py-10 text-center text-slate-500">
                                         Brak wyników dla podanego wyszukiwania.
                                     </td>
                                 </tr>
@@ -391,6 +668,18 @@ function VariantProductBatchOrderedTestsPage({
                                         className="border-t border-slate-100 hover:bg-slate-50/80"
                                         onContextMenu={(event) => handleContextMenu(event, row)}
                                     >
+                                        <td className="px-6 py-4">
+                                            <input
+                                                type="checkbox"
+                                                checked={selectedRowIds.includes(row.id)}
+                                                onChange={() => toggleRowSelection(row.id)}
+                                                onClick={(event) => event.stopPropagation()}
+                                                aria-label={`Zaznacz wiersz ${row.sku}`}
+                                            />
+                                        </td>
+                                        <td className="whitespace-nowrap px-6 py-4 text-slate-700">
+                                            {row.project_number || '—'}
+                                        </td>
                                         <td className="whitespace-nowrap px-6 py-4 font-semibold text-slate-900">
                                             {row.sku}
                                         </td>
@@ -595,6 +884,221 @@ function VariantProductBatchOrderedTestsPage({
                             </button>
                             <button type="button" onClick={handleSave} disabled={dialog.saving} className="rounded-2xl bg-slate-900 px-5 py-3 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50">
                                 {dialog.saving ? 'Zapisywanie...' : 'Zapisz'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {coaDialog.open && (
+                <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/40 p-4 md:p-8">
+                    <div className="w-full max-w-5xl rounded-3xl bg-white shadow-2xl">
+                        <div className="border-b border-slate-200 px-6 py-5">
+                            <h2 className="text-xl font-semibold text-slate-900">Generuj CoA</h2>
+                            <p className="mt-1 text-sm text-slate-600">
+                                Wybierz informacje szczegółowe dla projektu {coaDialog.projectNumber}.
+                            </p>
+                        </div>
+                        <div className="px-6 py-5">
+                            {coaDialog.loading ? (
+                                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
+                                    Ładowanie informacji szczegółowych...
+                                </div>
+                            ) : (
+                                <>
+                                    <div className="mb-4 flex items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                                        <span>Zaznaczone informacje: <span className="font-semibold text-slate-900">{coaDialog.selectedDetailIds.length}</span></span>
+                                        <button
+                                            type="button"
+                                            onClick={toggleAllCoaDetails}
+                                            className="rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-700 transition hover:bg-white"
+                                        >
+                                            {coaDialog.selectedDetailIds.length === coaDialog.details.length ? 'Odznacz wszystko' : 'Zaznacz wszystko'}
+                                        </button>
+                                    </div>
+                                    <div className="max-h-[60vh] overflow-auto rounded-2xl border border-slate-200">
+                                        {coaDialog.details.length === 0 ? (
+                                            <div className="px-4 py-8 text-center text-sm text-slate-500">
+                                                Brak informacji szczegółowych dla wybranego numeru projektu.
+                                            </div>
+                                        ) : (
+                                            <table className="w-full text-left text-sm">
+                                                <thead className="bg-slate-50 text-xs uppercase tracking-[0.18em] text-slate-500">
+                                                    <tr>
+                                                        <th className="px-4 py-4"></th>
+                                                        <th className="px-4 py-4">Parametr</th>
+                                                        <th className="px-4 py-4">Wymaganie</th>
+                                                        <th className="px-4 py-4">Metoda</th>
+                                                        <th className="px-4 py-4">Potwierdzenie</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {groupedCoaDetails.map((group) => (
+                                                        group.items.map((detail, index) => (
+                                                            index === 0 ? (
+                                                                <Fragment key={`group-${group.label}-${detail.id}`}>
+                                                                    <tr key={`group-${group.label}`} className="border-t border-slate-200 bg-amber-100/80">
+                                                                        <td colSpan={5} className="px-4 py-3 text-sm font-semibold text-amber-950">
+                                                                            {group.label}
+                                                                        </td>
+                                                                    </tr>
+                                                                    <tr key={detail.id} className="border-t border-slate-100">
+                                                                        <td className="px-4 py-4">
+                                                                            <input
+                                                                                type="checkbox"
+                                                                                checked={coaDialog.selectedDetailIds.includes(detail.id)}
+                                                                                onChange={() => toggleCoaDetail(detail.id)}
+                                                                                aria-label={`Zaznacz parametr ${detail.parameter_name_en}`}
+                                                                            />
+                                                                        </td>
+                                                                        <td className="px-4 py-4 text-slate-700">{detail.parameter_name_en} / {detail.parameter_name_pl}</td>
+                                                                        <td className="px-4 py-4 text-slate-700">{detail.requirement_en} / {detail.requirement_pl}</td>
+                                                                        <td className="px-4 py-4 text-slate-700">{detail.method_en} / {detail.method_pl}</td>
+                                                                        <td className="px-4 py-4 text-slate-700">{detail.confirmation_en || ''} / {detail.confirmation_pl || ''}</td>
+                                                                    </tr>
+                                                                </Fragment>
+                                                            ) : (
+                                                                <tr key={detail.id} className="border-t border-slate-100">
+                                                                    <td className="px-4 py-4">
+                                                                        <input
+                                                                            type="checkbox"
+                                                                            checked={coaDialog.selectedDetailIds.includes(detail.id)}
+                                                                            onChange={() => toggleCoaDetail(detail.id)}
+                                                                            aria-label={`Zaznacz parametr ${detail.parameter_name_en}`}
+                                                                        />
+                                                                    </td>
+                                                                    <td className="px-4 py-4 text-slate-700">{detail.parameter_name_en} / {detail.parameter_name_pl}</td>
+                                                                    <td className="px-4 py-4 text-slate-700">{detail.requirement_en} / {detail.requirement_pl}</td>
+                                                                    <td className="px-4 py-4 text-slate-700">{detail.method_en} / {detail.method_pl}</td>
+                                                                    <td className="px-4 py-4 text-slate-700">{detail.confirmation_en || ''} / {detail.confirmation_pl || ''}</td>
+                                                                </tr>
+                                                            )
+                                                        ))
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        )}
+                                    </div>
+                                </>
+                            )}
+                        </div>
+                        <div className="flex justify-end gap-3 border-t border-slate-200 px-6 py-5">
+                            <button
+                                type="button"
+                                onClick={closeCoaDialog}
+                                className="rounded-2xl border border-slate-300 px-5 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                                disabled={coaDialog.saving}
+                            >
+                                Anuluj
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleConfirmGenerateCoA}
+                                disabled={coaDialog.loading || coaDialog.saving || coaDialog.selectedDetailIds.length === 0}
+                                className="rounded-2xl bg-slate-900 px-5 py-3 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                                {coaDialog.saving ? 'Generowanie...' : 'Generuj PDF'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {documentsDialog.open && (
+                <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/40 p-4 md:p-8">
+                    <div className="w-full max-w-4xl rounded-3xl bg-white shadow-2xl">
+                        <div className="border-b border-slate-200 px-6 py-5">
+                            <h2 className="text-xl font-semibold text-slate-900">Dodaj dokumenty</h2>
+                            <p className="mt-1 text-sm text-slate-600">
+                                Dodaj do 6 dokumentów dla zaznaczonych pozycji: {selectedRowIds.length}
+                            </p>
+                        </div>
+                        <div className="grid gap-4 px-6 py-6">
+                            {documentsDialog.files.map((file, index) => {
+                                const inputId = `batch-document-${index + 1}`;
+
+                                return (
+                                    <div key={inputId} className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
+                                        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                                            <div>
+                                                <div className="text-sm font-semibold text-slate-900">
+                                                    Dokument {index + 1}
+                                                </div>
+                                                <div className="mt-1 text-sm text-slate-600">
+                                                    {file ? file.name : 'Nie wybrano pliku.'}
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <input
+                                                    id={inputId}
+                                                    type="file"
+                                                    className="hidden"
+                                                    onChange={(event) => updateDocumentSlot(index, event.target.files?.[0] || null)}
+                                                />
+                                                <label
+                                                    htmlFor={inputId}
+                                                    className="cursor-pointer rounded-xl border border-slate-300 px-4 py-2 text-sm text-slate-700 transition hover:bg-white"
+                                                >
+                                                    Dodaj
+                                                </label>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setDocumentsDialog((current) => ({ ...current, previewIndex: index }))}
+                                                    className="rounded-xl border border-slate-300 px-4 py-2 text-sm text-slate-700 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
+                                                    disabled={!file}
+                                                >
+                                                    Podgląd
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => updateDocumentSlot(index, null)}
+                                                    className="rounded-xl border border-slate-300 px-4 py-2 text-sm text-slate-700 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
+                                                    disabled={!file}
+                                                >
+                                                    Usuń
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                            {previewDocument && (
+                                <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                                    <div className="mb-3 flex items-center justify-between gap-3">
+                                        <div>
+                                            <div className="text-sm font-semibold text-slate-900">Podgląd PDF</div>
+                                            <div className="text-sm text-slate-600">{previewDocument.name}</div>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => setDocumentsDialog((current) => ({ ...current, previewIndex: null }))}
+                                            className="rounded-xl border border-slate-300 px-4 py-2 text-sm text-slate-700 transition hover:bg-slate-50"
+                                        >
+                                            Zamknij podgląd
+                                        </button>
+                                    </div>
+                                    <iframe
+                                        src={previewDocument.previewUrl}
+                                        title={previewDocument.name}
+                                        className="h-[70vh] w-full rounded-2xl border border-slate-200"
+                                    />
+                                </div>
+                            )}
+                        </div>
+                        <div className="flex justify-end gap-3 border-t border-slate-200 px-6 py-5">
+                            <button
+                                type="button"
+                                onClick={closeDocumentsDialog}
+                                className="rounded-2xl border border-slate-300 px-5 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                            >
+                                Anuluj
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleSaveDocuments}
+                                className="rounded-2xl bg-slate-900 px-5 py-3 text-sm font-medium text-white transition hover:bg-slate-800"
+                            >
+                                Zapisz
                             </button>
                         </div>
                     </div>

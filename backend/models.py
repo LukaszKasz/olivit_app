@@ -44,6 +44,7 @@ class MainProduct(Base):
     id = Column(Integer, primary_key=True, index=True)
     project_number = Column(String(50), index=True, nullable=False)
     name = Column(String(255), nullable=False)
+    id_szczegolow_produktu = Column(Integer, nullable=True, index=True)
     order_index = Column(Integer, nullable=False, index=True)
 
 
@@ -105,6 +106,44 @@ class VariantProductBatchTestOrder(Base):
     control_saved_at = Column(DateTime(timezone=True), nullable=True, index=True)
 
 
+class VariantProductBatchTestOrderArchive(Base):
+    __tablename__ = "variant_product_batch_test_orders_archive"
+
+    id = Column(Integer, primary_key=True, index=True)
+    sku = Column(String(100), index=True, nullable=False)
+    name = Column(String(512), nullable=False)
+    ean = Column(String(255), nullable=False)
+    laboratory_name = Column(String(100), index=True, nullable=True)
+    batch_number = Column(String(255), nullable=False)
+    batch_added_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
+    ordered_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    printed_material_type = Column(String(100), nullable=True)
+    product_name = Column(String(255), nullable=True)
+    product_project_number = Column(String(100), nullable=True)
+    product_ean_number = Column(String(255), nullable=True)
+    product_batch_number = Column(String(255), nullable=True)
+    product_expiry_date = Column(String(50), nullable=True)
+    control_date = Column(String(50), nullable=True)
+    market_label_version = Column(String(255), nullable=True)
+    active_substances_match_pds = Column(String(50), nullable=True)
+    label_version_matches_used_version = Column(String(10), nullable=True)
+    has_printing_errors = Column(String(10), nullable=True)
+    has_graphic_design_errors = Column(String(10), nullable=True)
+    print_correctness = Column(String(10), nullable=True)
+    has_labeling_errors = Column(String(10), nullable=True)
+    cap_is_correct = Column(String(20), nullable=True)
+    induction_seal_weld_correct = Column(String(20), nullable=True)
+    induction_seal_opening_correct = Column(String(20), nullable=True)
+    package_is_dirty = Column(String(10), nullable=True)
+    package_is_damaged = Column(String(10), nullable=True)
+    qr_code_is_active = Column(String(20), nullable=True)
+    package_contents_match_card = Column(String(10), nullable=True)
+    product_verified = Column(String(10), nullable=True)
+    comment = Column(String(2000), nullable=True)
+    control_saved_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    archived_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
+
+
 class VariantProductFinishedProductControl(Base):
     __tablename__ = "variant_product_finished_product_controls"
 
@@ -135,4 +174,22 @@ class VariantProductFinishedProductControl(Base):
     package_contents_match_card = Column(String(10), nullable=False)
     product_verified = Column(String(10), nullable=False)
     comment = Column(String(2000), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
+
+
+class ProductDetailedParameter(Base):
+    __tablename__ = "product_detailed_parameters"
+
+    id = Column(Integer, primary_key=True, index=True)
+    id_szczegolow_produktu = Column(Integer, nullable=True, index=True)
+    parameter_type_pl = Column(String(100), nullable=False)
+    parameter_type_en = Column(String(100), nullable=False)
+    parameter_name_pl = Column(String(255), nullable=False)
+    parameter_name_en = Column(String(255), nullable=False)
+    requirement_pl = Column(String(1000), nullable=False)
+    requirement_en = Column(String(1000), nullable=False)
+    method_pl = Column(String(1000), nullable=False)
+    method_en = Column(String(1000), nullable=False)
+    confirmation_pl = Column(String(1000), nullable=True)
+    confirmation_en = Column(String(1000), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)

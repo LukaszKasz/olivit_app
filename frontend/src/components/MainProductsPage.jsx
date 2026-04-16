@@ -23,6 +23,12 @@ function MainProductsPage() {
         batchNumber: '',
         saving: false,
     });
+    const [detailsDialog, setDetailsDialog] = useState({
+        open: false,
+        loading: false,
+        product: null,
+        items: [],
+    });
 
     useEffect(() => {
         const controller = new AbortController();
@@ -127,6 +133,96 @@ function MainProductsPage() {
         run();
     };
 
+    const handleDetailsAction = async () => {
+        if (!contextMenu.product) {
+            return;
+        }
+
+        const product = contextMenu.product;
+        setContextMenu((prev) => ({ ...prev, visible: false, submenuOpen: false }));
+        setDetailsDialog({
+            open: true,
+            loading: true,
+            product,
+            items: [],
+        });
+
+        try {
+            const items = await mainProductsAPI.getDetails(product.id);
+            setDetailsDialog({
+                open: true,
+                loading: false,
+                product,
+                items: Array.isArray(items) ? items : [],
+            });
+            setError('');
+        } catch (err) {
+            setError(err?.response?.data?.detail || err.message || 'Nie udało się pobrać szczegółów produktu.');
+            setDetailsDialog({
+                open: false,
+                loading: false,
+                product: null,
+                items: [],
+            });
+        }
+    };
+
+    const handleDetailsButtonClick = async (product) => {
+        setDetailsDialog({
+            open: true,
+            loading: true,
+            product,
+            items: [],
+        });
+
+        try {
+            const items = await mainProductsAPI.getDetails(product.id);
+            setDetailsDialog({
+                open: true,
+                loading: false,
+                product,
+                items: Array.isArray(items) ? items : [],
+            });
+            setError('');
+        } catch (err) {
+            setError(err?.response?.data?.detail || err.message || 'Nie udało się pobrać szczegółów produktu.');
+            setDetailsDialog({
+                open: false,
+                loading: false,
+                product: null,
+                items: [],
+            });
+        }
+    };
+
+    const handleAddBatchButtonClick = (product) => {
+        setOrderDialog({
+            open: true,
+            laboratory: '',
+            product,
+            batchNumber: '',
+            saving: false,
+        });
+    };
+
+    const groupedDetails = detailsDialog.items.reduce((groups, item) => {
+        const key = `${item.parameter_type_pl}|||${item.parameter_type_en}`;
+        const existingGroup = groups.find((group) => group.key === key);
+
+        if (existingGroup) {
+            existingGroup.items.push(item);
+            return groups;
+        }
+
+        groups.push({
+            key,
+            parameterTypePl: item.parameter_type_pl,
+            parameterTypeEn: item.parameter_type_en,
+            items: [item],
+        });
+        return groups;
+    }, []);
+
     return (
         <div className="max-w-7xl mx-auto">
             <div className="mb-6 flex items-end justify-between gap-4">
@@ -174,18 +270,19 @@ function MainProductsPage() {
                             <tr>
                                 <th className="px-6 py-4">Numer projektu</th>
                                 <th className="px-6 py-4">Nazwa</th>
+                                <th className="px-6 py-4 text-right">Akcje</th>
                             </tr>
                         </thead>
                         <tbody>
                             {loading ? (
                                 <tr className="border-t border-slate-100">
-                                    <td colSpan="2" className="px-6 py-10 text-center text-slate-500">
+                                    <td colSpan="3" className="px-6 py-10 text-center text-slate-500">
                                         Ładowanie produktów...
                                     </td>
                                 </tr>
                             ) : products.length === 0 ? (
                                 <tr className="border-t border-slate-100">
-                                    <td colSpan="2" className="px-6 py-10 text-center text-slate-500">
+                                    <td colSpan="3" className="px-6 py-10 text-center text-slate-500">
                                         Brak wyników dla podanego wyszukiwania.
                                     </td>
                                 </tr>
@@ -202,6 +299,24 @@ function MainProductsPage() {
                                         <td className="px-6 py-4 text-slate-700">
                                             {product.name}
                                         </td>
+                                        <td className="px-6 py-4 text-right">
+                                            <div className="flex justify-end gap-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleDetailsButtonClick(product)}
+                                                    className="rounded-2xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                                                >
+                                                    Szczegóły
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleAddBatchButtonClick(product)}
+                                                    className="rounded-2xl bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-800"
+                                                >
+                                                    Dodaj serię
+                                                </button>
+                                            </div>
+                                        </td>
                                     </tr>
                                 ))
                             )}
@@ -215,6 +330,14 @@ function MainProductsPage() {
                     className="absolute z-50 min-w-[240px] rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl"
                     style={{ top: contextMenu.y, left: contextMenu.x }}
                 >
+                    <button
+                        type="button"
+                        className="block w-full rounded-xl px-4 py-3 text-left text-sm font-medium text-slate-700 transition hover:bg-slate-100"
+                        onClick={handleDetailsAction}
+                    >
+                        Szczegóły
+                    </button>
+
                     <button
                         type="button"
                         className="flex w-full items-center justify-between rounded-xl px-4 py-3 text-left text-sm font-medium text-slate-700 transition hover:bg-slate-100"
@@ -252,8 +375,27 @@ function MainProductsPage() {
                         <div className="mb-6">
                             <h2 className="text-2xl font-semibold text-slate-900">Zleć badania</h2>
                             <p className="mt-2 text-sm text-slate-600">
-                                {orderDialog.product?.project_number} / {orderDialog.laboratory}
+                                {orderDialog.product?.project_number}
                             </p>
+                        </div>
+
+                        <div className="mb-6">
+                            <label className="block text-xs font-semibold uppercase tracking-[0.18em] text-slate-500" htmlFor="laboratory">
+                                Laboratorium
+                            </label>
+                            <select
+                                id="laboratory"
+                                value={orderDialog.laboratory}
+                                onChange={(event) => setOrderDialog((prev) => ({ ...prev, laboratory: event.target.value }))}
+                                className="mt-3 w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-500 focus:bg-white"
+                            >
+                                <option value="">Wybierz laboratorium</option>
+                                {LABORATORIES.map((laboratory) => (
+                                    <option key={laboratory} value={laboratory}>
+                                        {laboratory}
+                                    </option>
+                                ))}
+                            </select>
                         </div>
 
                         <div className="mb-6">
@@ -282,11 +424,87 @@ function MainProductsPage() {
                             <button
                                 type="button"
                                 onClick={handleOrderSave}
-                                disabled={orderDialog.saving || !orderDialog.batchNumber.trim()}
+                                disabled={orderDialog.saving || !orderDialog.batchNumber.trim() || !orderDialog.laboratory.trim()}
                                 className="rounded-2xl bg-slate-900 px-5 py-3 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
                             >
                                 {orderDialog.saving ? 'Zapisywanie...' : 'Zapisz'}
                             </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {detailsDialog.open && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/35 p-4">
+                    <div className="max-h-[90vh] w-full max-w-6xl overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl">
+                        <div className="flex items-start justify-between border-b border-slate-200 px-6 py-5">
+                            <div>
+                                <h2 className="text-2xl font-semibold text-slate-900">Szczegóły</h2>
+                                <p className="mt-2 text-sm text-slate-600">
+                                    {detailsDialog.product?.project_number} / {detailsDialog.product?.name}
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setDetailsDialog({ open: false, loading: false, product: null, items: [] })}
+                                className="rounded-2xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                            >
+                                Zamknij
+                            </button>
+                        </div>
+
+                        <div className="max-h-[70vh] overflow-auto p-6">
+                            {detailsDialog.loading ? (
+                                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
+                                    Ładowanie szczegółów...
+                                </div>
+                            ) : detailsDialog.items.length === 0 ? (
+                                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
+                                    Brak szczegółów dla tego produktu.
+                                </div>
+                            ) : (
+                                <div className="space-y-6">
+                                    {groupedDetails.map((group) => (
+                                        <section key={group.key} className="overflow-hidden rounded-3xl border border-slate-200">
+                                            <div className="border-b border-slate-200 bg-slate-50 px-5 py-4">
+                                                <h3 className="text-base font-semibold text-slate-900">{group.parameterTypePl}</h3>
+                                                <p className="mt-1 text-sm text-slate-600">{group.parameterTypeEn}</p>
+                                            </div>
+
+                                            <div className="overflow-x-auto">
+                                                <table className="w-full min-w-[980px] text-left text-sm">
+                                                    <thead className="bg-white text-xs uppercase tracking-[0.18em] text-slate-500">
+                                                        <tr>
+                                                            <th className="px-4 py-4">Parametr PL</th>
+                                                            <th className="px-4 py-4">Parametr EN</th>
+                                                            <th className="px-4 py-4">Wymaganie PL</th>
+                                                            <th className="px-4 py-4">Wymaganie EN</th>
+                                                            <th className="px-4 py-4">Metoda PL</th>
+                                                            <th className="px-4 py-4">Metoda EN</th>
+                                                            <th className="px-4 py-4">Potwierdzenie PL</th>
+                                                            <th className="px-4 py-4">Potwierdzenie EN</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        {group.items.map((item) => (
+                                                            <tr key={item.id} className="border-t border-slate-100 align-top">
+                                                                <td className="px-4 py-4 font-medium text-slate-900">{item.parameter_name_pl}</td>
+                                                                <td className="px-4 py-4 font-medium text-slate-900">{item.parameter_name_en}</td>
+                                                                <td className="px-4 py-4 text-slate-700">{item.requirement_pl}</td>
+                                                                <td className="px-4 py-4 text-slate-700">{item.requirement_en}</td>
+                                                                <td className="px-4 py-4 text-slate-700">{item.method_pl}</td>
+                                                                <td className="px-4 py-4 text-slate-700">{item.method_en}</td>
+                                                                <td className="px-4 py-4 text-slate-700">{item.confirmation_pl || '-'}</td>
+                                                                <td className="px-4 py-4 text-slate-700">{item.confirmation_en || '-'}</td>
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </section>
+                                    ))}
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>

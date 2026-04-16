@@ -74,6 +74,10 @@ export const mainProductsAPI = {
         });
         return response.data;
     },
+    getDetails: async (productId) => {
+        const response = await api.get(`/api/main-products/${productId}/details`);
+        return response.data;
+    },
     orderTests: async (payload) => {
         const response = await api.post('/api/main-products/ordered-tests', payload);
         return response.data;
@@ -101,6 +105,22 @@ export const variantProductsAPI = {
     },
     getOrderedBatchTests: async () => {
         const response = await api.get('/api/variant-products/batches/ordered-tests');
+        return response.data;
+    },
+    getArchivedBatchTests: async () => {
+        const response = await api.get('/api/variant-products/batches/archive');
+        return response.data;
+    },
+    archiveBatchTests: async (ids) => {
+        const response = await api.post('/api/variant-products/batches/archive', { ids });
+        return response.data;
+    },
+    generateBatchCoA: async (payload) => {
+        const response = await api.post('/api/variant-products/batches/coa', payload, { responseType: 'blob' });
+        return response;
+    },
+    getProjectDetails: async (projectNumber) => {
+        const response = await api.get(`/api/variant-products/projects/${projectNumber}/details`);
         return response.data;
     },
     createFinishedProductControl: async (payload) => {
