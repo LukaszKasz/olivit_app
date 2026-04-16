@@ -54,7 +54,7 @@ class MainProductTestOrder(Base):
     id = Column(Integer, primary_key=True, index=True)
     project_number = Column(String(50), index=True, nullable=False)
     name = Column(String(255), nullable=False)
-    laboratory_name = Column(String(100), index=True, nullable=False)
+    laboratory_name = Column(String(100), index=True, nullable=True)
     batch_number = Column(String(255), nullable=True)
     ordered_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
 

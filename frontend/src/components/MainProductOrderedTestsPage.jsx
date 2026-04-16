@@ -84,7 +84,7 @@ function MainProductOrderedTestsPage() {
                                             {new Date(order.ordered_at).toLocaleString('pl-PL')}
                                         </td>
                                         <td className="px-6 py-4 text-slate-700">
-                                            {order.laboratory_name}
+                                            {order.laboratory_name || '—'}
                                         </td>
                                     </tr>
                                 ))

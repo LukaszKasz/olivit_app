@@ -456,6 +456,10 @@ def ensure_main_product_test_orders_schema() -> None:
         with engine.begin() as connection:
             connection.execute(text("ALTER TABLE main_product_test_orders ADD COLUMN batch_number VARCHAR(255)"))
 
+    if "laboratory_name" in columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE main_product_test_orders ALTER COLUMN laboratory_name DROP NOT NULL"))
+
 
 def ensure_variant_product_batch_test_orders_schema() -> None:
     inspector = inspect(engine)
@@ -935,13 +939,13 @@ def create_main_product_test_order(
 
     project_number = payload.project_number.strip()
     name = payload.name.strip()
-    laboratory_name = payload.laboratory_name.strip()
+    laboratory_name = (payload.laboratory_name or "").strip()
     batch_number = payload.batch_number.strip()
 
-    if not project_number or not name or not laboratory_name or not batch_number:
+    if not project_number or not name or not batch_number:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="project_number, name, laboratory_name and batch_number are required",
+            detail="project_number, name and batch_number are required",
         )
 
     order = MainProductTestOrder(

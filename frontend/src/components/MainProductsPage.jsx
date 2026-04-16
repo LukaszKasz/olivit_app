@@ -18,6 +18,7 @@ function MainProductsPage() {
     const [success, setSuccess] = useState('');
     const [orderDialog, setOrderDialog] = useState({
         open: false,
+        mode: 'test-order',
         laboratory: '',
         product: null,
         batchNumber: '',
@@ -86,15 +87,32 @@ function MainProductsPage() {
         });
     };
 
-    const handleLaboratoryAction = (laboratory) => {
-        if (!contextMenu.product) {
+    const handleLaboratoryAction = (laboratory, product = contextMenu.product) => {
+        if (!product) {
             return;
         }
 
         setOrderDialog({
             open: true,
+            mode: 'test-order',
             laboratory,
-            product: contextMenu.product,
+            product,
+            batchNumber: '',
+            saving: false,
+        });
+        setContextMenu((prev) => ({ ...prev, visible: false, submenuOpen: false }));
+    };
+
+    const handleBatchOnlyAction = (product = contextMenu.product) => {
+        if (!product) {
+            return;
+        }
+
+        setOrderDialog({
+            open: true,
+            mode: 'batch-only',
+            laboratory: '',
+            product,
             batchNumber: '',
             saving: false,
         });
@@ -112,13 +130,18 @@ function MainProductsPage() {
                 await mainProductsAPI.orderTests({
                     project_number: orderDialog.product.project_number,
                     name: orderDialog.product.name,
-                    laboratory_name: orderDialog.laboratory,
+                    laboratory_name: orderDialog.laboratory || undefined,
                     batch_number: orderDialog.batchNumber,
                 });
-                setSuccess(`Zlecono badania dla ${orderDialog.product.project_number} w ${orderDialog.laboratory}, seria: ${orderDialog.batchNumber}.`);
+                setSuccess(
+                    orderDialog.mode === 'test-order'
+                        ? `Zlecono badania dla ${orderDialog.product.project_number} w ${orderDialog.laboratory}, seria: ${orderDialog.batchNumber}.`
+                        : `Dodano serię ${orderDialog.batchNumber} dla ${orderDialog.product.project_number}.`
+                );
                 setError('');
                 setOrderDialog({
                     open: false,
+                    mode: 'test-order',
                     laboratory: '',
                     product: null,
                     batchNumber: '',
@@ -196,13 +219,7 @@ function MainProductsPage() {
     };
 
     const handleAddBatchButtonClick = (product) => {
-        setOrderDialog({
-            open: true,
-            laboratory: '',
-            product,
-            batchNumber: '',
-            saving: false,
-        });
+        handleBatchOnlyAction(product);
     };
 
     const groupedDetails = detailsDialog.items.reduce((groups, item) => {
@@ -310,8 +327,15 @@ function MainProductsPage() {
                                                 </button>
                                                 <button
                                                     type="button"
+                                                    onClick={() => handleLaboratoryAction('', product)}
+                                                    className="rounded-2xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                                                >
+                                                    Zleć badania
+                                                </button>
+                                                <button
+                                                    type="button"
                                                     onClick={() => handleAddBatchButtonClick(product)}
-                                                    className="rounded-2xl bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-800"
+                                                    className="rounded-2xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
                                                 >
                                                     Dodaj serię
                                                 </button>
@@ -373,30 +397,35 @@ function MainProductsPage() {
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/35 p-4">
                     <div className="w-full max-w-lg rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl">
                         <div className="mb-6">
-                            <h2 className="text-2xl font-semibold text-slate-900">Zleć badania</h2>
+                            <h2 className="text-2xl font-semibold text-slate-900">
+                                {orderDialog.mode === 'test-order' ? 'Zleć badania' : 'Dodaj serię'}
+                            </h2>
                             <p className="mt-2 text-sm text-slate-600">
                                 {orderDialog.product?.project_number}
+                                {orderDialog.mode === 'test-order' && orderDialog.laboratory ? ` / ${orderDialog.laboratory}` : ''}
                             </p>
                         </div>
 
-                        <div className="mb-6">
-                            <label className="block text-xs font-semibold uppercase tracking-[0.18em] text-slate-500" htmlFor="laboratory">
-                                Laboratorium
-                            </label>
-                            <select
-                                id="laboratory"
-                                value={orderDialog.laboratory}
-                                onChange={(event) => setOrderDialog((prev) => ({ ...prev, laboratory: event.target.value }))}
-                                className="mt-3 w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-500 focus:bg-white"
-                            >
-                                <option value="">Wybierz laboratorium</option>
-                                {LABORATORIES.map((laboratory) => (
-                                    <option key={laboratory} value={laboratory}>
-                                        {laboratory}
-                                    </option>
-                                ))}
-                            </select>
-                        </div>
+                        {orderDialog.mode === 'test-order' && (
+                            <div className="mb-6">
+                                <label className="block text-xs font-semibold uppercase tracking-[0.18em] text-slate-500" htmlFor="laboratory">
+                                    Laboratorium
+                                </label>
+                                <select
+                                    id="laboratory"
+                                    value={orderDialog.laboratory}
+                                    onChange={(event) => setOrderDialog((prev) => ({ ...prev, laboratory: event.target.value }))}
+                                    className="mt-3 w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-500 focus:bg-white"
+                                >
+                                    <option value="">Wybierz laboratorium</option>
+                                    {LABORATORIES.map((laboratory) => (
+                                        <option key={laboratory} value={laboratory}>
+                                            {laboratory}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                        )}
 
                         <div className="mb-6">
                             <label className="block text-xs font-semibold uppercase tracking-[0.18em] text-slate-500" htmlFor="batch-number">
@@ -415,7 +444,7 @@ function MainProductsPage() {
                         <div className="flex justify-end gap-3">
                             <button
                                 type="button"
-                                onClick={() => setOrderDialog({ open: false, laboratory: '', product: null, batchNumber: '', saving: false })}
+                                onClick={() => setOrderDialog({ open: false, mode: 'test-order', laboratory: '', product: null, batchNumber: '', saving: false })}
                                 className="rounded-2xl border border-slate-300 px-5 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
                                 disabled={orderDialog.saving}
                             >
@@ -424,7 +453,7 @@ function MainProductsPage() {
                             <button
                                 type="button"
                                 onClick={handleOrderSave}
-                                disabled={orderDialog.saving || !orderDialog.batchNumber.trim() || !orderDialog.laboratory.trim()}
+                                disabled={orderDialog.saving || !orderDialog.batchNumber.trim() || (orderDialog.mode === 'test-order' && !orderDialog.laboratory.trim())}
                                 className="rounded-2xl bg-slate-900 px-5 py-3 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
                             >
                                 {orderDialog.saving ? 'Zapisywanie...' : 'Zapisz'}
