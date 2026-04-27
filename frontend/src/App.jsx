@@ -10,14 +10,17 @@ import VariantProductsPage from './components/VariantProductsPage';
 import VariantProductBatchOrderedTestsPage from './components/VariantProductBatchOrderedTestsPage';
 import VariantProductFinishedProductControlPage from './components/VariantProductFinishedProductControlPage';
 import { tokenManager } from './api';
+import { getAppBasePath } from './appBase';
 
 function ProtectedRoute({ children }) {
     return tokenManager.isAuthenticated() ? children : <Navigate to="/login" />;
 }
 
 function App() {
+    const basename = getAppBasePath();
+
     return (
-        <Router>
+        <Router basename={basename === '/' ? undefined : basename}>
             <Routes>
                 <Route path="/" element={<Navigate to="/login" />} />
                 <Route path="/login" element={<LoginForm />} />

@@ -55,7 +55,10 @@ services:
       db:
         condition: service_healthy
     networks:
-      - olivi-app-network
+      olivi-app-network:
+      proxy:
+        aliases:
+          - olivitqms-backend
     restart: unless-stopped
 
   frontend:
@@ -71,7 +74,10 @@ services:
     depends_on:
       - backend
     networks:
-      - olivi-app-network
+      olivi-app-network:
+      proxy:
+        aliases:
+          - olivitqms-frontend
     restart: unless-stopped
 
 volumes:
@@ -83,3 +89,6 @@ networks:
   olivi-app-network:
     name: olivi_app_network
     driver: bridge
+
+  proxy:
+    external: true

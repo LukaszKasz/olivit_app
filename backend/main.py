@@ -1,14 +1,17 @@
+import os
+import json
+from json import JSONDecodeError
 from datetime import timedelta
 from datetime import datetime, timezone
 from io import BytesIO
 from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi import FastAPI, Depends, File, HTTPException, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, EmailStr
-from sqlalchemy import inspect, or_, text
+from sqlalchemy import DateTime, inspect, or_, text
 from sqlalchemy.orm import Session
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
@@ -153,6 +156,131 @@ def serialize_variant_batch_row(row: VariantProductBatchTestOrder | VariantProdu
     }
 
 
+def serialize_database_value(value):
+    if isinstance(value, datetime):
+        return value.isoformat()
+    return value
+
+
+def parse_database_value(value, column):
+    if value is None:
+        return None
+    if isinstance(column.type, DateTime) and isinstance(value, str):
+        try:
+            return datetime.fromisoformat(value)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Nieprawidlowa data w tabeli {column.table.name}, kolumna {column.name}.",
+            ) from exc
+    return value
+
+
+def build_database_export() -> dict:
+    payload = {
+        "format": "olivit-database-export",
+        "version": 1,
+        "exported_at": datetime.now(timezone.utc).isoformat(),
+        "tables": {},
+    }
+
+    with engine.connect() as connection:
+        for table in Base.metadata.sorted_tables:
+            rows = connection.execute(table.select().order_by(table.c.id if "id" in table.c else text("1"))).mappings().all()
+            payload["tables"][table.name] = {
+                "columns": [column.name for column in table.columns],
+                "rows": [
+                    {column.name: serialize_database_value(row[column.name]) for column in table.columns}
+                    for row in rows
+                ],
+            }
+
+    return payload
+
+
+def import_database_export(payload: dict) -> dict:
+    if payload.get("format") != "olivit-database-export":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="To nie jest plik eksportu bazy danych Olivit.",
+        )
+
+    tables_payload = payload.get("tables")
+    if not isinstance(tables_payload, dict):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Plik importu nie zawiera sekcji tables.",
+        )
+
+    metadata_tables = {table.name: table for table in Base.metadata.sorted_tables}
+    unknown_tables = sorted(set(tables_payload) - set(metadata_tables))
+    if unknown_tables:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Plik zawiera nieznane tabele: {', '.join(unknown_tables)}.",
+        )
+
+    missing_tables = sorted(set(metadata_tables) - set(tables_payload))
+    if missing_tables:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Plik nie zawiera wszystkich tabel: {', '.join(missing_tables)}.",
+        )
+
+    imported_counts: dict[str, int] = {}
+    with engine.begin() as connection:
+        for table in reversed(Base.metadata.sorted_tables):
+            connection.execute(table.delete())
+
+        for table in Base.metadata.sorted_tables:
+            table_payload = tables_payload.get(table.name, {})
+            rows = table_payload.get("rows", [])
+            if not isinstance(rows, list):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Nieprawidlowe dane rows dla tabeli {table.name}.",
+                )
+
+            table_columns = {column.name: column for column in table.columns}
+            parsed_rows = []
+            for row in rows:
+                if not isinstance(row, dict):
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Nieprawidlowy wiersz w tabeli {table.name}.",
+                    )
+
+                unknown_columns = sorted(set(row) - set(table_columns))
+                if unknown_columns:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Tabela {table.name} zawiera nieznane kolumny: {', '.join(unknown_columns)}.",
+                    )
+
+                parsed_rows.append({
+                    column_name: parse_database_value(value, table_columns[column_name])
+                    for column_name, value in row.items()
+                })
+
+            if parsed_rows:
+                connection.execute(table.insert(), parsed_rows)
+            imported_counts[table.name] = len(parsed_rows)
+
+            if "id" in table.c:
+                connection.execute(
+                    text(
+                        "SELECT setval("
+                        "pg_get_serial_sequence(:table_name, 'id'), "
+                        "COALESCE((SELECT MAX(id) FROM " + table.name + "), 1), "
+                        "COALESCE((SELECT MAX(id) FROM " + table.name + "), 0) > 0"
+                        ")"
+                    ),
+                    {"table_name": table.name},
+                )
+
+    return imported_counts
+
+
 def format_date_for_pdf(value: datetime | str | None) -> str:
     if value is None:
         return ""
@@ -290,13 +418,29 @@ app = FastAPI(
     version="1.0.0",
 )
 
+DEFAULT_CORS_ORIGINS = [
+    "http://localhost:3300",
+    "http://localhost:5173",
+    "http://localhost:8080",
+]
+
+
+def get_allowed_origins():
+    configured_origins = os.getenv("CORS_ALLOW_ORIGINS")
+    if not configured_origins:
+        return DEFAULT_CORS_ORIGINS
+
+    return [origin.strip() for origin in configured_origins.split(",") if origin.strip()]
+
+
 # CORS middleware configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3300", "http://localhost:5173"],
+    allow_origins=get_allowed_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["Content-Disposition"],
 )
 
 
@@ -811,6 +955,55 @@ def read_users_me(current_user: User = Depends(get_current_user)):
     Protected endpoint - requires valid JWT token.
     """
     return current_user
+
+
+@app.get("/api/database/export")
+def export_database(current_user: User = Depends(get_current_user)):
+    _ = current_user
+
+    payload = build_database_export()
+    data = json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
+    filename = f"olivit-database-export-{datetime.now().strftime('%Y%m%d-%H%M%S')}.json"
+    return StreamingResponse(
+        BytesIO(data),
+        media_type="application/json",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@app.post("/api/database/import")
+async def import_database(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+):
+    _ = current_user
+
+    try:
+        content = await file.read()
+        payload = json.loads(content.decode("utf-8"))
+    except UnicodeDecodeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Plik importu musi byc zapisany jako UTF-8.",
+        ) from exc
+    except JSONDecodeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Plik importu nie jest poprawnym plikiem JSON.",
+        ) from exc
+
+    imported_counts = import_database_export(payload)
+
+    db = SessionLocal()
+    try:
+        apply_runtime_integration_settings(db)
+    finally:
+        db.close()
+
+    return {
+        "message": "Import zakonczony.",
+        "tables": imported_counts,
+    }
 
 
 @app.get("/api/main-products", response_model=list[MainProductResponse])
