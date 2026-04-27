@@ -1,14 +1,17 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { integrationSettingsAPI } from '../api';
+import { databaseBackupAPI, integrationSettingsAPI } from '../api';
 
 function SettingsPage() {
     const { t } = useTranslation();
 
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
+    const [exporting, setExporting] = useState(false);
+    const [importing, setImporting] = useState(false);
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
+    const fileInputRef = useRef(null);
 
     const [form, setForm] = useState({
         prestashop: {
@@ -113,6 +116,70 @@ function SettingsPage() {
             setError(err?.response?.data?.detail || t('settings.errorSave'));
         } finally {
             setSaving(false);
+        }
+    };
+
+    const handleExportDatabase = async () => {
+        setExporting(true);
+        setError('');
+        setSuccess('');
+
+        try {
+            const response = await databaseBackupAPI.exportDatabase();
+            const blob = new Blob([response.data], {
+                type: response.headers['content-type'] || 'application/json',
+            });
+            const disposition = response.headers['content-disposition'] || '';
+            const match = disposition.match(/filename="?([^"]+)"?/i);
+            const filename = match?.[1] || 'olivit-database-export.json';
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+
+            link.href = url;
+            link.download = filename;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            URL.revokeObjectURL(url);
+
+            setSuccess('Eksport bazy danych został pobrany.');
+        } catch (err) {
+            setError(err?.response?.data?.detail || 'Nie udało się wyeksportować bazy danych.');
+        } finally {
+            setExporting(false);
+        }
+    };
+
+    const handleImportDatabase = async (e) => {
+        const file = e.target.files?.[0];
+
+        if (!file) {
+            return;
+        }
+
+        setImporting(true);
+        setError('');
+        setSuccess('');
+
+        try {
+            const result = await databaseBackupAPI.importDatabase(file);
+            const importedTables = Object.entries(result.tables || {})
+                .map(([tableName, count]) => `${tableName}: ${count}`)
+                .join(', ');
+
+            setSuccess(
+                importedTables
+                    ? `Import zakończony. Zaimportowano: ${importedTables}.`
+                    : 'Import zakończony.',
+            );
+            await loadSettings();
+        } catch (err) {
+            setError(err?.response?.data?.detail || 'Nie udało się zaimportować bazy danych.');
+        } finally {
+            if (fileInputRef.current) {
+                fileInputRef.current.value = '';
+            }
+            setImporting(false);
         }
     };
 
@@ -349,6 +416,35 @@ function SettingsPage() {
                                     {t('settings.verifySsl')}
                                 </label>
                             </div>
+                        </div>
+                    </section>
+
+                    <section className="card">
+                        <h2 className="text-lg font-semibold text-slate-800 mb-2">Import i eksport tabel</h2>
+                        <p className="text-sm text-slate-600 mb-4">
+                            Eksport zapisuje pełną zawartość obsługiwanych tabel do pliku JSON. Import nadpisuje dane
+                            w bazie zawartością wskazanego pliku.
+                        </p>
+                        <div className="flex flex-col gap-3 md:flex-row md:items-center">
+                            <button
+                                type="button"
+                                onClick={handleExportDatabase}
+                                disabled={exporting || importing || saving}
+                                className="btn-secondary disabled:opacity-60"
+                            >
+                                {exporting ? 'Trwa eksport...' : 'Eksportuj tabele'}
+                            </button>
+                            <label className="btn-secondary cursor-pointer disabled:opacity-60">
+                                {importing ? 'Trwa import...' : 'Importuj tabele'}
+                                <input
+                                    ref={fileInputRef}
+                                    type="file"
+                                    accept="application/json,.json"
+                                    className="hidden"
+                                    onChange={handleImportDatabase}
+                                    disabled={exporting || importing || saving}
+                                />
+                            </label>
                         </div>
                     </section>
 

@@ -78,6 +78,26 @@ export const integrationSettingsAPI = {
     },
 };
 
+export const databaseBackupAPI = {
+    exportDatabase: async () => {
+        const response = await api.get('/api/database/export', {
+            responseType: 'blob',
+        });
+        return response;
+    },
+    importDatabase: async (file) => {
+        const formData = new FormData();
+        formData.append('file', file);
+
+        const response = await api.post('/api/database/import', formData, {
+            headers: {
+                'Content-Type': 'multipart/form-data',
+            },
+        });
+        return response.data;
+    },
+};
+
 export const mainProductsAPI = {
     getProducts: async (query = '') => {
         const response = await api.get('/api/main-products', {
