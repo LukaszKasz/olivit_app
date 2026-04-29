@@ -1,13 +1,17 @@
 import os
 import json
+import logging
 from json import JSONDecodeError
+from collections import deque
 from datetime import timedelta
 from datetime import datetime, timezone
 from io import BytesIO
 from pathlib import Path
+from time import perf_counter
 from typing import Optional
+from urllib.parse import urlparse
 
-from fastapi import FastAPI, Depends, File, HTTPException, UploadFile, status
+from fastapi import FastAPI, Depends, File, HTTPException, UploadFile, status, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, EmailStr
@@ -96,6 +100,41 @@ PDF_FONT_PATH = Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf")
 
 if PDF_FONT_PATH.exists() and PDF_FONT_NAME not in pdfmetrics.getRegisteredFontNames():
     pdfmetrics.registerFont(TTFont(PDF_FONT_NAME, str(PDF_FONT_PATH)))
+
+
+class InMemoryLogHandler(logging.Handler):
+    def __init__(self, capacity: int = 200):
+        super().__init__()
+        self.records = deque(maxlen=capacity)
+
+    def emit(self, record: logging.LogRecord) -> None:
+        self.records.appendleft({
+            "timestamp": datetime.fromtimestamp(record.created, tz=timezone.utc).isoformat(),
+            "level": record.levelname,
+            "logger": record.name,
+            "message": record.getMessage(),
+        })
+
+
+diagnostics_log_handler = InMemoryLogHandler()
+app_logger = logging.getLogger("olivit.app")
+if not any(isinstance(handler, InMemoryLogHandler) for handler in app_logger.handlers):
+    diagnostics_log_handler.setLevel(logging.INFO)
+    app_logger.addHandler(diagnostics_log_handler)
+app_logger.setLevel(logging.INFO)
+app_logger.propagate = False
+
+
+def mask_database_url(database_url: str) -> str:
+    parsed = urlparse(database_url)
+    host = parsed.hostname or "unknown-host"
+    port = f":{parsed.port}" if parsed.port else ""
+    database_name = parsed.path.lstrip("/") or "unknown-db"
+    return f"{parsed.scheme}://{host}{port}/{database_name}"
+
+
+def get_recent_logs(limit: int = 50) -> list[dict]:
+    return list(diagnostics_log_handler.records)[:limit]
 
 
 def get_project_number_from_variant_sku(sku: str) -> str | None:
@@ -444,6 +483,36 @@ app.add_middleware(
 )
 
 
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    started_at = perf_counter()
+    try:
+        response = await call_next(request)
+    except Exception:
+        duration_ms = round((perf_counter() - started_at) * 1000, 2)
+        app_logger.exception(
+            "Unhandled error for %s %s in %sms",
+            request.method,
+            request.url.path,
+            duration_ms,
+        )
+        raise
+
+    if not request.url.path.startswith(("/docs", "/openapi.json")):
+        duration_ms = round((perf_counter() - started_at) * 1000, 2)
+        level = logging.WARNING if response.status_code >= 500 else logging.INFO
+        app_logger.log(
+            level,
+            "%s %s -> %s in %sms",
+            request.method,
+            request.url.path,
+            response.status_code,
+            duration_ms,
+        )
+
+    return response
+
+
 # Pydantic models for request/response
 class UserRegister(BaseModel):
     username: str
@@ -552,6 +621,23 @@ class IntegrationSettingsUpdateDTO(BaseModel):
     baselinker: Optional[BaselinkerSettingsUpdateDTO] = None
     shopify: Optional[ShopifySettingsUpdateDTO] = None
     magento: Optional[MagentoSettingsUpdateDTO] = None
+
+
+class DiagnosticsLogEntryDTO(BaseModel):
+    timestamp: str
+    level: str
+    logger: str
+    message: str
+
+
+class DiagnosticsResponseDTO(BaseModel):
+    checked_at: str
+    backend_status: str
+    database: dict
+    products: dict
+    auth: dict
+    client: dict
+    recent_logs: list[DiagnosticsLogEntryDTO]
 
 
 def ensure_main_products_seed(db: Session) -> None:
@@ -860,6 +946,53 @@ def build_settings_response(db: Session) -> IntegrationSettingsResponseDTO:
     )
 
 
+def build_diagnostics_response(db: Session, current_user: User, request: Request) -> DiagnosticsResponseDTO:
+    checked_at = datetime.now(timezone.utc).isoformat()
+    database_url = os.getenv(
+        "DATABASE_URL",
+        "postgresql://postgres:postgres@db:5432/app_start_db",
+    )
+    main_products_count = 0
+    variant_products_count = 0
+    users_count = 0
+
+    try:
+        db.execute(text("SELECT 1"))
+        main_products_count = db.query(MainProduct).count()
+        variant_products_count = db.query(VariantProduct).count()
+        users_count = db.query(User).count()
+        database_status = "ok"
+        database_error = ""
+    except Exception as exc:
+        database_status = "error"
+        database_error = str(exc)
+        app_logger.exception("Database diagnostics check failed")
+
+    return DiagnosticsResponseDTO(
+        checked_at=checked_at,
+        backend_status="ok",
+        database={
+            "status": database_status,
+            "url": mask_database_url(database_url),
+            "error": database_error,
+        },
+        products={
+            "main_products_count": main_products_count,
+            "variant_products_count": variant_products_count,
+            "users_count": users_count,
+        },
+        auth={
+            "current_user": current_user.username,
+        },
+        client={
+            "host": request.headers.get("host", ""),
+            "origin": request.headers.get("origin", ""),
+            "user_agent": request.headers.get("user-agent", ""),
+        },
+        recent_logs=get_recent_logs(),
+    )
+
+
 @app.on_event("startup")
 def startup_seed_settings():
     db = SessionLocal()
@@ -1024,7 +1157,10 @@ def get_main_products(
             )
         )
 
-    return query.order_by(MainProduct.order_index.asc()).all()
+    items = query.order_by(MainProduct.order_index.asc()).all()
+    if not items and not (q and q.strip()):
+        app_logger.warning("Main products query returned no rows")
+    return items
 
 
 @app.get("/api/main-products/{product_id}/details", response_model=list[ProductDetailedParameterResponse])
@@ -1104,6 +1240,8 @@ def get_variant_products(
         .limit(page_size)
         .all()
     )
+    if total == 0 and not (q and q.strip()):
+        app_logger.warning("Variant products query returned no rows")
 
     return VariantProductsPageResponse(
         items=[serialize_variant_product(item) for item in items],
@@ -1537,6 +1675,16 @@ def update_integration_settings(
     return build_settings_response(db)
 
 
+@app.get("/api/system/diagnostics", response_model=DiagnosticsResponseDTO)
+def get_system_diagnostics(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _ = current_user
+    return build_diagnostics_response(db, current_user, request)
+
+
 @app.get("/api/orders")
 async def get_all_orders(
     limit: int = 10,
@@ -1553,31 +1701,31 @@ async def get_all_orders(
     try:
         presta_orders = await prestashop_client.get_latest_orders(1)
     except Exception as e:
-        print(f"Prestashop fetch error: {e}")
+        app_logger.exception("Prestashop fetch error: %s", e)
         presta_orders = []
 
     try:
         bl_orders = await baselinker_client.get_latest_orders()
     except Exception as e:
-        print(f"Baselinker fetch error: {e}")
+        app_logger.exception("Baselinker fetch error: %s", e)
         bl_orders = []
 
     try:
         woo_orders = await woocommerce_client.get_latest_orders(limit=1)
     except Exception as e:
-        print(f"WooCommerce fetch error: {e}")
+        app_logger.exception("WooCommerce fetch error: %s", e)
         woo_orders = []
 
     try:
         shopify_orders = await shopify_client.get_latest_orders(limit=5)
     except Exception as e:
-        print(f"Shopify fetch error: {e}")
+        app_logger.exception("Shopify fetch error: %s", e)
         shopify_orders = []
 
     try:
         magento_orders = await magento_client.get_latest_orders(limit=5)
     except Exception as e:
-        print(f"Magento fetch error: {e}")
+        app_logger.exception("Magento fetch error: %s", e)
         magento_orders = []
 
     # Dla potrzeb POC (Proof of Concept) nie sortujemy ogólnie po dacie,

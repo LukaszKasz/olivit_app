@@ -68,6 +68,13 @@ function Sidebar({ collapsed, onToggle }) {
                     </svg>
                     {!collapsed && <span className="whitespace-nowrap">{t('sidebar.settings')}</span>}
                 </NavLink>
+
+                <NavLink to="/diagnostics" end className={navLinkClass} title="Diagnostyka">
+                    <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-6m3 6V7m3 10v-4m4 8H5a2 2 0 01-2-2V5a2 2 0 012-2h14a2 2 0 012 2v14a2 2 0 01-2 2z" />
+                    </svg>
+                    {!collapsed && <span className="whitespace-nowrap">Diagnostyka</span>}
+                </NavLink>
             </nav>
 
             {/* Bottom - Logout */}

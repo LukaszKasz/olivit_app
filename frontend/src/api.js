@@ -78,6 +78,14 @@ export const integrationSettingsAPI = {
     },
 };
 
+export const diagnosticsAPI = {
+    getSystemDiagnostics: async () => {
+        const response = await api.get('/api/system/diagnostics');
+        return response.data;
+    },
+    getApiBaseUrl: () => API_BASE_URL,
+};
+
 export const databaseBackupAPI = {
     exportDatabase: async () => {
         const response = await api.get('/api/database/export', {
