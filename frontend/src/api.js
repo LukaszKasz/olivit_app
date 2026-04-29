@@ -84,6 +84,7 @@ export const diagnosticsAPI = {
         return response.data;
     },
     getApiBaseUrl: () => API_BASE_URL,
+    getDiagnosticsUrl: () => `${API_BASE_URL}/api/system/diagnostics`,
 };
 
 export const databaseBackupAPI = {

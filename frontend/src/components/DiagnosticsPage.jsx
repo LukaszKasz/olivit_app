@@ -1,6 +1,17 @@
 import { useEffect, useState } from 'react';
 import { diagnosticsAPI } from '../api';
 
+function formatDiagnosticsError(err) {
+    const status = err?.response?.status;
+    const detail = err?.response?.data?.detail;
+
+    if (status === 404) {
+        return 'Endpoint diagnostyki nie istnieje po stronie serwera (404). Najczęściej oznacza to starszy backend na serwerze albo brak przekierowania `/api/system/diagnostics` w reverse proxy.';
+    }
+
+    return detail || err.message || 'Nie udało się pobrać diagnostyki systemu.';
+}
+
 function StatusBadge({ status }) {
     const normalized = (status || '').toLowerCase();
     const className = normalized === 'ok' || normalized === 'healthy'
@@ -42,7 +53,7 @@ function DiagnosticsPage() {
             const data = await diagnosticsAPI.getSystemDiagnostics();
             setDiagnostics(data);
         } catch (err) {
-            setError(err?.response?.data?.detail || err.message || 'Nie udało się pobrać diagnostyki systemu.');
+            setError(formatDiagnosticsError(err));
         } finally {
             setLoading(false);
             setRefreshing(false);
@@ -74,7 +85,11 @@ function DiagnosticsPage() {
 
             {error && (
                 <div className="mb-6 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                    {error}
+                    <p className="font-semibold">Nie udało się pobrać diagnostyki</p>
+                    <p className="mt-1">{error}</p>
+                    <p className="mt-2 break-all text-red-800/80">
+                        Oczekiwany endpoint: {diagnosticsAPI.getDiagnosticsUrl()}
+                    </p>
                 </div>
             )}
 
