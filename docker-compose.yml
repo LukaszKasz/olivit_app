@@ -3,6 +3,7 @@ name: olivi_app
 services:
   db:
     image: postgres:15-alpine
+    restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
@@ -23,6 +24,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+    restart: unless-stopped
     env_file:
       - .env
     environment:
@@ -59,12 +61,12 @@ services:
       proxy:
         aliases:
           - olivitqms-backend
-    restart: unless-stopped
 
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+    restart: unless-stopped
     env_file:
       - .env
     environment:
@@ -78,8 +80,6 @@ services:
       proxy:
         aliases:
           - olivitqms-frontend
-    restart: unless-stopped
-
 volumes:
   postgres_data:
     name: olivi_app_postgres_data
