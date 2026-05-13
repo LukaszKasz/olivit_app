@@ -54,17 +54,20 @@ function FormField({ label, required = false, children }) {
 function SelectField({ label, value, onChange, options }) {
     return (
         <FormField label={label} required>
-            <select
-                value={value}
-                onChange={onChange}
-                className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-500"
-            >
+            <div className="flex flex-wrap gap-3 rounded-2xl border border-slate-300 bg-white px-4 py-3">
                 {options.map((option) => (
-                    <option key={option} value={option}>
-                        {option}
-                    </option>
+                    <label key={option} className="inline-flex cursor-pointer items-center gap-2 text-sm text-slate-900">
+                        <input
+                            type="radio"
+                            value={option}
+                            checked={value === option}
+                            onChange={onChange}
+                            className="h-4 w-4 border-slate-300 text-slate-900 focus:ring-slate-500"
+                        />
+                        <span>{option}</span>
+                    </label>
                 ))}
-            </select>
+            </div>
         </FormField>
     );
 }
@@ -92,12 +95,6 @@ function VariantProductFinishedProductControlPage() {
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
     const [dialogError, setDialogError] = useState('');
-    const [contextMenu, setContextMenu] = useState({
-        visible: false,
-        x: 0,
-        y: 0,
-        row: null,
-    });
     const [dialog, setDialog] = useState({
         open: false,
         saving: false,
@@ -122,35 +119,7 @@ function VariantProductFinishedProductControlPage() {
         loadRows();
     }, []);
 
-    useEffect(() => {
-        if (!contextMenu.visible) {
-            return undefined;
-        }
-
-        const closeContextMenu = () => {
-            setContextMenu({ visible: false, x: 0, y: 0, row: null });
-        };
-
-        window.addEventListener('click', closeContextMenu);
-        window.addEventListener('scroll', closeContextMenu, true);
-
-        return () => {
-            window.removeEventListener('click', closeContextMenu);
-            window.removeEventListener('scroll', closeContextMenu, true);
-        };
-    }, [contextMenu.visible]);
-
-    const handleContextMenu = (event, row) => {
-        event.preventDefault();
-        setContextMenu({
-            visible: true,
-            x: event.pageX,
-            y: event.pageY,
-            row,
-        });
-    };
-
-    const openDialog = (row = contextMenu.row) => {
+    const openDialog = (row) => {
         if (!row) {
             return;
         }
@@ -161,7 +130,6 @@ function VariantProductFinishedProductControlPage() {
             form: createInitialForm(row),
         });
         setDialogError('');
-        setContextMenu({ visible: false, x: 0, y: 0, row: null });
     };
 
     const closeDialog = () => {
@@ -219,6 +187,9 @@ function VariantProductFinishedProductControlPage() {
     });
     const visibleRowIds = filteredRows.map((row) => row.id);
     const allVisibleSelected = visibleRowIds.length > 0 && visibleRowIds.every((id) => selectedRowIds.includes(id));
+    const selectedRow = selectedRowIds.length === 1
+        ? rows.find((row) => row.id === selectedRowIds[0]) || null
+        : null;
 
     const toggleRowSelection = (rowId) => {
         setSelectedRowIds((current) =>
@@ -241,7 +212,7 @@ function VariantProductFinishedProductControlPage() {
             <div className="mb-6 flex items-end justify-between gap-4">
                 <div>
                     <h1 className="text-3xl font-semibold text-slate-900">Warianty produktów / Kontrola produktu gotowego</h1>
-                    <p className="mt-2 text-sm text-slate-600">Tabela prezentuje te same partie i produkty co widok badań zleconych. Kliknij prawym przyciskiem na wiersz, aby wypełnić formularz.</p>
+                    <p className="mt-2 text-sm text-slate-600">Tabela prezentuje te same partie i produkty co widok badań zleconych. Zaznacz jeden wiersz, aby wypełnić formularz kontroli produktu gotowego.</p>
                 </div>
                 <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600 shadow-sm">
                     Pozycji: <span className="font-semibold text-slate-900">{rows.length}</span>
@@ -250,14 +221,24 @@ function VariantProductFinishedProductControlPage() {
 
             <div className="mb-4 flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600 shadow-sm">
                 <span>Zaznaczone: <span className="font-semibold text-slate-900">{selectedRowIds.length}</span></span>
-                <button
-                    type="button"
-                    onClick={() => setSelectedRowIds([])}
-                    className="rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-                    disabled={selectedRowIds.length === 0}
-                >
-                    Wyczyść zaznaczenie
-                </button>
+                <div className="flex items-center gap-2">
+                    <button
+                        type="button"
+                        onClick={() => openDialog(selectedRow)}
+                        className="rounded-xl bg-slate-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                        disabled={!selectedRow}
+                    >
+                        Wypełnij formularz
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setSelectedRowIds([])}
+                        className="rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                        disabled={selectedRowIds.length === 0}
+                    >
+                        Wyczyść zaznaczenie
+                    </button>
+                </div>
             </div>
 
             <div className="mb-6 rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -350,7 +331,6 @@ function VariantProductFinishedProductControlPage() {
                                     <tr
                                         key={row.id}
                                         className="border-t border-slate-100 hover:bg-slate-50/80"
-                                        onContextMenu={(event) => handleContextMenu(event, row)}
                                     >
                                         <td className="px-6 py-4">
                                             <input
@@ -400,24 +380,9 @@ function VariantProductFinishedProductControlPage() {
                 </div>
             </div>
 
-            {contextMenu.visible && (
-                <div
-                    className="absolute z-40 min-w-64 rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl"
-                    style={{ top: contextMenu.y, left: contextMenu.x }}
-                >
-                    <button
-                        type="button"
-                        onClick={() => openDialog()}
-                        className="w-full rounded-xl px-4 py-3 text-left text-sm text-slate-700 transition hover:bg-slate-50"
-                    >
-                        Wypełnij formularz
-                    </button>
-                </div>
-            )}
-
             {dialog.open && (
                 <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/40 p-4 md:p-8">
-                    <div className="w-full max-w-5xl rounded-3xl bg-white shadow-2xl">
+                    <div className="flex max-h-[calc(100vh-50px)] w-full max-w-3xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl">
                         <div className="border-b border-slate-200 px-6 py-5">
                             <h2 className="text-xl font-semibold text-slate-900">Kontrola produktu gotowego</h2>
                             <p className="mt-1 text-sm text-slate-600">
@@ -425,7 +390,8 @@ function VariantProductFinishedProductControlPage() {
                             </p>
                         </div>
 
-                        <div className="grid gap-4 px-6 py-6 md:grid-cols-2">
+                        <div className="flex-1 overflow-y-auto px-6 py-6">
+                            <div className="grid gap-4">
                             <SelectField label="Rodzaj materiału zadrukowanego" value={dialog.form.printed_material_type} onChange={(event) => updateField('printed_material_type', event.target.value)} options={MATERIAL_TYPES} />
                             <FormField label="Nazwa produktu" required>
                                 <input type="text" value={dialog.form.product_name} onChange={(event) => updateField('product_name', event.target.value)} className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-500" />
@@ -462,11 +428,12 @@ function VariantProductFinishedProductControlPage() {
                             <SelectField label="Czy kod QR jest aktywny?" value={dialog.form.qr_code_is_active} onChange={(event) => updateField('qr_code_is_active', event.target.value)} options={YES_NO_NA} />
                             <SelectField label="Zawartość opakowania zgodna z Kartą Produktu (w tym miarka przy proszkach)" value={dialog.form.package_contents_match_card} onChange={(event) => updateField('package_contents_match_card', event.target.value)} options={YES_NO} />
                             <SelectField label="Poprawność produktu została zweryfikowana" value={dialog.form.product_verified} onChange={(event) => updateField('product_verified', event.target.value)} options={YES_NO} />
-                            <div className="md:col-span-2">
+                            <div>
                                 <FormField label="Komentarz">
                                     <textarea value={dialog.form.comment} onChange={(event) => updateField('comment', event.target.value)} rows={4} className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-500" />
                                 </FormField>
                             </div>
+                        </div>
                         </div>
 
                         {dialogError && (
