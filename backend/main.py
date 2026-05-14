@@ -1,6 +1,7 @@
 import os
 import json
 import logging
+import httpx
 from json import JSONDecodeError
 from collections import deque
 from datetime import timedelta
@@ -97,6 +98,8 @@ from services.magento import (
 MAIN_PRODUCT_NUMBERS = sorted({project_number for project_number, _ in MAIN_PRODUCTS}, key=len, reverse=True)
 PDF_FONT_NAME = "DejaVuSans"
 PDF_FONT_PATH = Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf")
+ASANA_URL = os.getenv("ASANA_URL", "https://app.asana.com/api/1.0")
+ASANA_ACCESS_TOKEN = os.getenv("ASANA_ACCESS_TOKEN", "")
 
 if PDF_FONT_PATH.exists() and PDF_FONT_NAME not in pdfmetrics.getRegisteredFontNames():
     pdfmetrics.registerFont(TTFont(PDF_FONT_NAME, str(PDF_FONT_PATH)))
@@ -573,12 +576,18 @@ class MagentoSettingsDTO(BaseModel):
     verify_ssl: bool
 
 
+class AsanaSettingsDTO(BaseModel):
+    base_url: str
+    access_token: str
+
+
 class IntegrationSettingsResponseDTO(BaseModel):
     prestashop: PrestashopSettingsDTO
     woocommerce: WooCommerceSettingsDTO
     baselinker: BaselinkerSettingsDTO
     shopify: ShopifySettingsDTO
     magento: MagentoSettingsDTO
+    asana: AsanaSettingsDTO
 
 
 class PrestashopSettingsUpdateDTO(BaseModel):
@@ -615,12 +624,41 @@ class MagentoSettingsUpdateDTO(BaseModel):
     verify_ssl: Optional[bool] = None
 
 
+class AsanaSettingsUpdateDTO(BaseModel):
+    base_url: Optional[str] = None
+    access_token: Optional[str] = None
+
+
 class IntegrationSettingsUpdateDTO(BaseModel):
     prestashop: Optional[PrestashopSettingsUpdateDTO] = None
     woocommerce: Optional[WooCommerceSettingsUpdateDTO] = None
     baselinker: Optional[BaselinkerSettingsUpdateDTO] = None
     shopify: Optional[ShopifySettingsUpdateDTO] = None
     magento: Optional[MagentoSettingsUpdateDTO] = None
+    asana: Optional[AsanaSettingsUpdateDTO] = None
+
+
+class AsanaMeResponseDTO(BaseModel):
+    status: str
+    base_url: str
+    user: dict
+
+
+class AsanaTaskResponseDTO(BaseModel):
+    status: str
+    task_gid: str
+    task: dict
+
+
+class AsanaCommentCreateDTO(BaseModel):
+    task_gid: str
+    text: str
+
+
+class AsanaCommentResponseDTO(BaseModel):
+    status: str
+    task_gid: str
+    story: dict
 
 
 class DiagnosticsLogEntryDTO(BaseModel):
@@ -787,6 +825,11 @@ def ensure_integration_settings_seed(db: Session) -> None:
             "access_token_secret": MAGENTO_ACCESS_TOKEN_SECRET,
             "verify_ssl": MAGENTO_VERIFY_SSL,
         },
+        "asana": {
+            "base_url": ASANA_URL,
+            "api_key": ASANA_ACCESS_TOKEN,
+            "verify_ssl": True,
+        },
     }
 
     any_updates = False
@@ -860,6 +903,66 @@ def get_integration_settings_map(db: Session) -> dict:
     ensure_integration_settings_seed(db)
     rows = db.query(IntegrationSettings).all()
     return {row.provider: row for row in rows}
+
+
+def get_asana_credentials(db: Session) -> tuple[str, str]:
+    settings = get_integration_settings_map(db)
+    asana = settings.get("asana")
+    if not asana:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Brak ustawień integracji Asana.",
+        )
+
+    base_url = (asana.base_url or "").rstrip("/")
+    access_token = (asana.api_key or "").strip()
+
+    if not base_url:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Brak adresu bazowego Asany w ustawieniach.",
+        )
+
+    if not access_token:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Brak tokenu Asany w ustawieniach.",
+        )
+
+    return base_url, access_token
+
+
+def call_asana_api(method: str, path: str, access_token: str, *, json_payload: dict | None = None) -> dict:
+    try:
+        with httpx.Client(timeout=20.0) as client:
+            response = client.request(
+                method=method,
+                url=path,
+                headers={
+                    "Authorization": f"Bearer {access_token}",
+                    "Content-Type": "application/json",
+                },
+                json=json_payload,
+            )
+    except httpx.RequestError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Nie udało się połączyć z Asaną: {exc}",
+        ) from exc
+
+    try:
+        payload = response.json()
+    except ValueError:
+        payload = {"raw": response.text}
+
+    if response.status_code >= 400:
+        detail = payload.get("errors") if isinstance(payload, dict) else payload
+        raise HTTPException(
+            status_code=response.status_code,
+            detail=detail or "Asana zwróciła błąd.",
+        )
+
+    return payload
 
 
 def apply_runtime_integration_settings(db: Session) -> None:
@@ -942,6 +1045,10 @@ def build_settings_response(db: Session) -> IntegrationSettingsResponseDTO:
             access_token=settings["magento"].api_key or "",
             access_token_secret=getattr(settings["magento"], "access_token_secret", "") or "",
             verify_ssl=bool(settings["magento"].verify_ssl),
+        ),
+        asana=AsanaSettingsDTO(
+            base_url=settings["asana"].base_url,
+            access_token=settings["asana"].api_key or "",
         ),
     )
 
@@ -1670,9 +1777,90 @@ def update_integration_settings(
         if payload.magento.verify_ssl is not None:
             row.verify_ssl = payload.magento.verify_ssl
 
+    if payload.asana:
+        row = settings["asana"]
+        if payload.asana.base_url is not None:
+            row.base_url = payload.asana.base_url
+        if payload.asana.access_token is not None:
+            row.api_key = payload.asana.access_token
+
     db.commit()
     apply_runtime_integration_settings(db)
     return build_settings_response(db)
+
+
+@app.get("/api/asana/me", response_model=AsanaMeResponseDTO)
+def get_asana_me(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _ = current_user
+    base_url, access_token = get_asana_credentials(db)
+    payload = call_asana_api("GET", f"{base_url}/users/me", access_token)
+    return {
+        "status": "ok",
+        "base_url": base_url,
+        "user": payload.get("data", payload),
+    }
+
+
+@app.get("/api/asana/tasks/{task_gid}", response_model=AsanaTaskResponseDTO)
+def get_asana_task(
+    task_gid: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _ = current_user
+    normalized_task_gid = (task_gid or "").strip()
+    if not normalized_task_gid:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Pole task_gid jest wymagane.",
+        )
+
+    base_url, access_token = get_asana_credentials(db)
+    payload = call_asana_api("GET", f"{base_url}/tasks/{normalized_task_gid}", access_token)
+    return {
+        "status": "ok",
+        "task_gid": normalized_task_gid,
+        "task": payload.get("data", payload),
+    }
+
+
+@app.post("/api/asana/comment", response_model=AsanaCommentResponseDTO)
+def create_asana_comment(
+    payload: AsanaCommentCreateDTO,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _ = current_user
+    base_url, access_token = get_asana_credentials(db)
+    task_gid = (payload.task_gid or "").strip()
+    text = (payload.text or "").strip()
+
+    if not task_gid:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Pole task_gid jest wymagane.",
+        )
+
+    if not text:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Pole text jest wymagane.",
+        )
+
+    result = call_asana_api(
+        "POST",
+        f"{base_url}/tasks/{task_gid}/stories",
+        access_token,
+        json_payload={"data": {"text": text}},
+    )
+    return {
+        "status": "ok",
+        "task_gid": task_gid,
+        "story": result.get("data", result),
+    }
 
 
 @app.get("/api/system/diagnostics", response_model=DiagnosticsResponseDTO)

@@ -43,6 +43,10 @@ function SettingsPage() {
             access_token_secret: '',
             verify_ssl: true,
         },
+        asana: {
+            base_url: '',
+            access_token: '',
+        },
     });
 
     const updateField = (section, field, value) => {
@@ -106,6 +110,10 @@ function SettingsPage() {
                     access_token: form.magento.access_token,
                     access_token_secret: form.magento.access_token_secret,
                     verify_ssl: form.magento.verify_ssl,
+                },
+                asana: {
+                    base_url: form.asana.base_url,
+                    access_token: form.asana.access_token,
                 },
             };
 
@@ -415,6 +423,30 @@ function SettingsPage() {
                                 <label htmlFor="magento_verify_ssl" className="text-sm text-slate-700">
                                     {t('settings.verifySsl')}
                                 </label>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section className="card">
+                        <h2 className="text-lg font-semibold text-slate-800 mb-4">Asana</h2>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="md:col-span-2">
+                                <label className="block text-sm font-medium text-slate-700 mb-1">{t('settings.baseUrl')}</label>
+                                <input
+                                    className="input-field"
+                                    value={form.asana.base_url}
+                                    onChange={(e) => updateField('asana', 'base_url', e.target.value)}
+                                    placeholder="https://app.asana.com/api/1.0"
+                                />
+                            </div>
+                            <div className="md:col-span-2">
+                                <label className="block text-sm font-medium text-slate-700 mb-1">{t('settings.accessToken')}</label>
+                                <input
+                                    className="input-field"
+                                    value={form.asana.access_token}
+                                    onChange={(e) => updateField('asana', 'access_token', e.target.value)}
+                                    placeholder="0/123456789..."
+                                />
                             </div>
                         </div>
                     </section>

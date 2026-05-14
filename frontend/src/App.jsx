@@ -10,6 +10,7 @@ import VariantProductsPage from './components/VariantProductsPage';
 import VariantProductBatchOrderedTestsPage from './components/VariantProductBatchOrderedTestsPage';
 import VariantProductFinishedProductControlPage from './components/VariantProductFinishedProductControlPage';
 import DiagnosticsPage from './components/DiagnosticsPage';
+import AsanaPage from './components/AsanaPage';
 import { tokenManager } from './api';
 import { getAppBasePath } from './appBase';
 
@@ -50,6 +51,7 @@ function App() {
                         }
                     />
                     <Route path="/settings" element={<SettingsPage />} />
+                    <Route path="/asana" element={<AsanaPage />} />
                     <Route path="/diagnostics" element={<DiagnosticsPage />} />
                 </Route>
             </Routes>

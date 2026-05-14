@@ -87,6 +87,21 @@ export const diagnosticsAPI = {
     getDiagnosticsUrl: () => `${API_BASE_URL}/api/system/diagnostics`,
 };
 
+export const asanaAPI = {
+    getCurrentUser: async () => {
+        const response = await api.get('/api/asana/me');
+        return response.data;
+    },
+    getTask: async (taskGid) => {
+        const response = await api.get(`/api/asana/tasks/${taskGid}`);
+        return response.data;
+    },
+    createComment: async (payload) => {
+        const response = await api.post('/api/asana/comment', payload);
+        return response.data;
+    },
+};
+
 export const databaseBackupAPI = {
     exportDatabase: async () => {
         const response = await api.get('/api/database/export', {
