@@ -103,12 +103,12 @@ function DiagnosticsPage() {
                         <MetricCard label="Backend" value={<StatusBadge status={diagnostics.backend_status} />} hint={`Sprawdzone: ${diagnostics.checked_at || '-'}`} />
                         <MetricCard label="Baza danych" value={<StatusBadge status={diagnostics.database?.status} />} hint={diagnostics.database?.url || '-'} />
                         <MetricCard
-                            label="Produkty główne"
+                            label="Bulk / Baza produktów"
                             value={diagnostics.products?.main_products_count ?? 0}
                             hint={(diagnostics.products?.main_products_count ?? 0) === 0 ? 'Brak rekordów w tabeli main_products.' : 'Dane dostępne w bazie.'}
                         />
                         <MetricCard
-                            label="Warianty produktów"
+                            label="Produkty spakowane / Warianty"
                             value={diagnostics.products?.variant_products_count ?? 0}
                             hint={(diagnostics.products?.variant_products_count ?? 0) === 0 ? 'Brak rekordów w tabeli variant_products.' : 'Dane dostępne w bazie.'}
                         />

@@ -122,6 +122,15 @@ export const databaseBackupAPI = {
     },
 };
 
+export const brdAPI = {
+    download: async () => {
+        const response = await api.get('/api/brd/download', {
+            responseType: 'blob',
+        });
+        return response;
+    },
+};
+
 export const mainProductsAPI = {
     getProducts: async (query = '') => {
         const response = await api.get('/api/main-products', {

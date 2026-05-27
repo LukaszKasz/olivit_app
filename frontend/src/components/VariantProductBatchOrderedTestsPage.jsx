@@ -85,11 +85,36 @@ function TwoLineNameCell({ children }) {
     );
 }
 
+function isAffirmative(value) {
+    return value === 'Tak' || value === 'Nie dotyczy';
+}
+
+function hasFinishedProductControlIssues(row) {
+    return [
+        !isAffirmative(row.active_substances_match_pds),
+        row.label_version_matches_used_version !== 'Tak',
+        row.has_printing_errors !== 'Nie',
+        row.has_graphic_design_errors !== 'Nie',
+        row.print_correctness !== 'Tak',
+        row.has_labeling_errors !== 'Nie',
+        !isAffirmative(row.cap_is_correct),
+        !isAffirmative(row.induction_seal_weld_correct),
+        !isAffirmative(row.induction_seal_opening_correct),
+        row.package_is_dirty !== 'Nie',
+        row.package_is_damaged !== 'Nie',
+        !isAffirmative(row.qr_code_is_active),
+        row.package_contents_match_card !== 'Tak',
+        row.product_verified !== 'Tak',
+    ].some(Boolean);
+}
+
 function VariantProductBatchOrderedTestsPage({
-    title = 'Warianty produktów / Partie / Badania zlecone',
+    title = 'Produkty spakowane / Warianty - Badania zlecone',
     description = 'Dane pobierane z tabeli zleconych badań partii wariantów w bazie PostgreSQL.',
     enableFinishedProductControl = false,
     archiveMode = false,
+    finishedProductControlFilter = 'all',
+    allowCreateFinishedProductControl = true,
 }) {
     const [rows, setRows] = useState([]);
     const [pickerRows, setPickerRows] = useState([]);
@@ -127,16 +152,20 @@ function VariantProductBatchOrderedTestsPage({
         previewIndex: null,
     });
 
+    const loadRows = async () => {
+        const data = enableFinishedProductControl
+            ? await variantProductsAPI.getFinishedProductControls()
+            : archiveMode
+                ? await variantProductsAPI.getArchivedBatchTests()
+                : await variantProductsAPI.getOrderedBatchTests();
+        return Array.isArray(data) ? data : [];
+    };
+
     useEffect(() => {
-        const loadRows = async () => {
+        const fetchRows = async () => {
             try {
                 setLoading(true);
-                const data = enableFinishedProductControl
-                    ? await variantProductsAPI.getFinishedProductControls()
-                    : archiveMode
-                        ? await variantProductsAPI.getArchivedBatchTests()
-                        : await variantProductsAPI.getOrderedBatchTests();
-                setRows(Array.isArray(data) ? data : []);
+                setRows(await loadRows());
                 setError('');
             } catch (err) {
                 setError(
@@ -151,7 +180,7 @@ function VariantProductBatchOrderedTestsPage({
             }
         };
 
-        loadRows();
+        fetchRows();
     }, [archiveMode, enableFinishedProductControl]);
 
     useEffect(() => {
@@ -249,8 +278,7 @@ function VariantProductBatchOrderedTestsPage({
         try {
             setDialog((prev) => ({ ...prev, saving: true }));
             await variantProductsAPI.createFinishedProductControl(dialog.form);
-            const updatedRows = await variantProductsAPI.getOrderedBatchTests();
-            setRows(Array.isArray(updatedRows) ? updatedRows : []);
+            setRows(await loadRows());
             setSuccess(`Zapisano kontrolę produktu gotowego dla ${dialog.form.sku}, seria: ${dialog.form.product_batch_number}.`);
             setError('');
             setDialogError('');
@@ -277,6 +305,16 @@ function VariantProductBatchOrderedTestsPage({
     });
 
     const filteredRows = rows.filter((row) => {
+        if (enableFinishedProductControl) {
+            if (finishedProductControlFilter === 'correct' && hasFinishedProductControlIssues(row)) {
+                return false;
+            }
+
+            if (finishedProductControlFilter === 'incorrect' && !hasFinishedProductControlIssues(row)) {
+                return false;
+            }
+        }
+
         const value = searchQuery.trim().toLowerCase();
         if (!value) {
             return true;
@@ -303,6 +341,7 @@ function VariantProductBatchOrderedTestsPage({
     }, []);
     const visibleRowIds = filteredRows.map((row) => row.id);
     const allVisibleSelected = visibleRowIds.length > 0 && visibleRowIds.every((id) => selectedRowIds.includes(id));
+    const displayCount = filteredRows.length;
 
     const toggleRowSelection = (rowId) => {
         setSelectedRowIds((current) =>
@@ -493,7 +532,7 @@ function VariantProductBatchOrderedTestsPage({
                     <p className="mt-2 text-sm text-slate-600">{description}</p>
                 </div>
                 <div className="flex items-center gap-3">
-                    {enableFinishedProductControl && (
+                    {enableFinishedProductControl && allowCreateFinishedProductControl && (
                         <button
                             type="button"
                             onClick={openPicker}
@@ -503,7 +542,7 @@ function VariantProductBatchOrderedTestsPage({
                         </button>
                     )}
                     <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600 shadow-sm">
-                        Pozycji: <span className="font-semibold text-slate-900">{rows.length}</span>
+                        Pozycji: <span className="font-semibold text-slate-900">{displayCount}</span>
                     </div>
                 </div>
             </div>

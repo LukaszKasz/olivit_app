@@ -17,14 +17,22 @@ function Sidebar({ collapsed, onToggle }) {
             ? 'bg-primary-600 text-white shadow-md'
             : 'text-slate-300 hover:bg-slate-700/60 hover:text-white'}`;
 
-    const productMenuItems = [
-        { to: '/main-products', label: 'Produkty główne' },
-        { to: '/main-products/ordered-tests', label: 'Produkty główne / Badania zlecone' },
-        { to: '/main-products/archive', label: 'Produkty główne / Archiwum' },
-        { to: '/product-variants', label: 'Warianty produktów' },
-        { to: '/product-variants/batches/ordered-tests', label: 'Warianty produktów / Partie / Badania zlecone' },
-        { to: '/product-variants/finished-product-control', label: 'Warianty produktów / Kontrola produktu gotowego' },
-        { to: '/product-variants/batches/archive', label: 'Warianty produktów / Partie / Archiwum' },
+    const productMenuSections = [
+        [
+            { to: '/main-products', label: 'Bulk / Baza produktów' },
+            { to: '/main-products/ordered-tests', label: 'Bulk / Baza produktów - Badania zlecone' },
+            { to: '/main-products/to-pack', label: 'Bulk / Baza produktów - Do spakowania' },
+            { to: '/main-products/to-clarify', label: 'Bulk / Baza produktów - Do wyjaśnienia' },
+            { to: '/main-products/archive', label: 'Bulk / Baza produktów - Archiwum' },
+        ],
+        [
+            { to: '/product-variants', label: 'Produkty spakowane / Warianty' },
+            { to: '/product-variants/batches/ordered-tests', label: 'Produkty spakowane / Warianty - Badania zlecone' },
+            { to: '/product-variants/finished-product-control', label: 'Produkty spakowane / Warianty - Kontrola produktu gotowego - Bieżące' },
+            { to: '/product-variants/finished-product-control/incorrect', label: 'Produkty spakowane / Warianty - Kontrola produktu gotowego - Błędne' },
+            { to: '/product-variants/finished-product-control/correct', label: 'Produkty spakowane / Warianty - Kontrola produktu gotowego - Poprawne' },
+            { to: '/product-variants/batches/archive', label: 'Produkty spakowane / Warianty - Badania ukończone' },
+        ],
     ];
 
     return (
@@ -52,13 +60,17 @@ function Sidebar({ collapsed, onToggle }) {
 
             {/* Top navigation */}
             <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-                {productMenuItems.map((item) => (
-                    <NavLink key={item.to} to={item.to} end className={navLinkClass} title={item.label}>
-                        <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7h16M4 12h16M4 17h16" />
-                        </svg>
-                        {!collapsed && <span className="leading-5">{item.label}</span>}
-                    </NavLink>
+                {productMenuSections.map((section, sectionIndex) => (
+                    <div key={section[0].to} className={sectionIndex > 0 ? 'mt-3 border-t border-slate-700/50 pt-3' : ''}>
+                        {section.map((item) => (
+                            <NavLink key={item.to} to={item.to} end className={navLinkClass} title={item.label}>
+                                <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7h16M4 12h16M4 17h16" />
+                                </svg>
+                                {!collapsed && <span className="leading-5">{item.label}</span>}
+                            </NavLink>
+                        ))}
+                    </div>
                 ))}
 
                 <NavLink to="/settings" end className={navLinkClass} title={t('sidebar.settings')}>
@@ -67,6 +79,13 @@ function Sidebar({ collapsed, onToggle }) {
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                     </svg>
                     {!collapsed && <span className="whitespace-nowrap">{t('sidebar.settings')}</span>}
+                </NavLink>
+
+                <NavLink to="/brd" end className={navLinkClass} title="BRD">
+                    <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l3.414 3.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    {!collapsed && <span className="whitespace-nowrap">BRD</span>}
                 </NavLink>
 
                 <NavLink to="/asana" end className={navLinkClass} title="Asana">

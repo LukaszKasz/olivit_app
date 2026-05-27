@@ -255,7 +255,7 @@ function VariantProductsPage() {
         <div className="w-full">
             <div className="mb-6 flex items-end justify-between gap-4">
                 <div>
-                    <h1 className="text-3xl font-semibold text-slate-900">Warianty produktów</h1>
+                    <h1 className="text-3xl font-semibold text-slate-900">Produkty spakowane / Warianty</h1>
                     <p className="mt-2 text-sm text-slate-600">
                         Lista wariantów produktów z numerem wariantu, nazwą i kodem EAN.
                     </p>

@@ -3,7 +3,10 @@ import { mainProductsAPI } from '../api';
 
 const LABORATORIES = ['Laboratorium A', 'Laboratorium B', 'Laboratorium C'];
 
-function MainProductsPage() {
+function MainProductsPage({
+    title = 'Bulk / Baza produktów',
+    description = 'Lista produktów głównych dostępnych w bazie.',
+}) {
     const [query, setQuery] = useState('');
     const [products, setProducts] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -244,9 +247,9 @@ function MainProductsPage() {
         <div className="max-w-7xl mx-auto">
             <div className="mb-6 flex items-end justify-between gap-4">
                 <div>
-                    <h1 className="text-3xl font-semibold text-slate-900">Produkty główne</h1>
+                    <h1 className="text-3xl font-semibold text-slate-900">{title}</h1>
                     <p className="mt-2 text-sm text-slate-600">
-                        Lista produktów głównych z numerem projektu i nazwą.
+                        {description}
                     </p>
                 </div>
                 <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600 shadow-sm">

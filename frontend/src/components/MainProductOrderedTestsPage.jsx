@@ -27,7 +27,7 @@ function MainProductOrderedTestsPage() {
         <div className="max-w-7xl mx-auto">
             <div className="mb-6 flex items-end justify-between gap-4">
                 <div>
-                    <h1 className="text-3xl font-semibold text-slate-900">Produkty główne / Badania zlecone</h1>
+                    <h1 className="text-3xl font-semibold text-slate-900">Bulk / Baza produktów - Badania zlecone</h1>
                     <p className="mt-2 text-sm text-slate-600">
                         Dane pobierane z tabeli zleconych badań w bazie PostgreSQL.
                     </p>

@@ -8,9 +8,9 @@ import MenuPlaceholderPage from './components/MenuPlaceholderPage';
 import SettingsPage from './components/SettingsPage';
 import VariantProductsPage from './components/VariantProductsPage';
 import VariantProductBatchOrderedTestsPage from './components/VariantProductBatchOrderedTestsPage';
-import VariantProductFinishedProductControlPage from './components/VariantProductFinishedProductControlPage';
 import DiagnosticsPage from './components/DiagnosticsPage';
 import AsanaPage from './components/AsanaPage';
+import BrdPage from './components/BrdPage';
 import { tokenManager } from './api';
 import { getAppBasePath } from './appBase';
 
@@ -34,23 +34,76 @@ function App() {
                         </ProtectedRoute>
                     }
                 >
-                    <Route path="/main-products" element={<MainProductsPage />} />
+                    <Route
+                        path="/main-products"
+                        element={<MainProductsPage title="Bulk / Baza produktów" />}
+                    />
+                    <Route
+                        path="/main-products/to-pack"
+                        element={
+                            <MainProductsPage
+                                title="Bulk / Baza produktów - Do spakowania"
+                                description="Lista produktów z bazy, gotowych do dalszej obsługi i pakowania."
+                            />
+                        }
+                    />
                     <Route path="/main-products/ordered-tests" element={<MainProductOrderedTestsPage />} />
-                    <Route path="/main-products/archive" element={<MenuPlaceholderPage title="Produkty główne / Archiwum" />} />
+                    <Route
+                        path="/main-products/to-clarify"
+                        element={<MenuPlaceholderPage title="Bulk / Baza produktów - Do wyjaśnienia" />}
+                    />
+                    <Route
+                        path="/main-products/archive"
+                        element={<MenuPlaceholderPage title="Bulk / Baza produktów - Archiwum" />}
+                    />
                     <Route path="/product-variants" element={<VariantProductsPage />} />
                     <Route path="/product-variants/batches/ordered-tests" element={<VariantProductBatchOrderedTestsPage />} />
-                    <Route path="/product-variants/finished-product-control" element={<VariantProductFinishedProductControlPage />} />
+                    <Route
+                        path="/product-variants/finished-product-control"
+                        element={
+                            <VariantProductBatchOrderedTestsPage
+                                title="Produkty spakowane / Warianty - Kontrola produktu gotowego - Bieżące"
+                                description="Bieżąca lista zapisanych kontroli produktu gotowego."
+                                enableFinishedProductControl
+                            />
+                        }
+                    />
+                    <Route
+                        path="/product-variants/finished-product-control/incorrect"
+                        element={
+                            <VariantProductBatchOrderedTestsPage
+                                title="Produkty spakowane / Warianty - Kontrola produktu gotowego - Błędne"
+                                description="Widok kontroli produktu gotowego z wykrytymi niezgodnościami."
+                                enableFinishedProductControl
+                                finishedProductControlFilter="incorrect"
+                                allowCreateFinishedProductControl={false}
+                            />
+                        }
+                    />
+                    <Route
+                        path="/product-variants/finished-product-control/correct"
+                        element={
+                            <VariantProductBatchOrderedTestsPage
+                                title="Produkty spakowane / Warianty - Kontrola produktu gotowego - Poprawne"
+                                description="Widok kontroli produktu gotowego bez wykrytych niezgodności."
+                                enableFinishedProductControl
+                                finishedProductControlFilter="correct"
+                                allowCreateFinishedProductControl={false}
+                            />
+                        }
+                    />
                     <Route
                         path="/product-variants/batches/archive"
                         element={
                             <VariantProductBatchOrderedTestsPage
-                                title="Warianty produktów / Partie / Archiwum"
-                                description="Dane pobierane z tabeli archiwum partii wariantów w bazie PostgreSQL."
+                                title="Produkty spakowane / Warianty - Badania ukończone"
+                                description="Dane pobierane z tabeli archiwum badań ukończonych dla wariantów w bazie PostgreSQL."
                                 archiveMode
                             />
                         }
                     />
                     <Route path="/settings" element={<SettingsPage />} />
+                    <Route path="/brd" element={<BrdPage />} />
                     <Route path="/asana" element={<AsanaPage />} />
                     <Route path="/diagnostics" element={<DiagnosticsPage />} />
                 </Route>

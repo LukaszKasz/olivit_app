@@ -85,6 +85,7 @@ from services.shopify import (
     SHOPIFY_API_SECRET,
     SHOPIFY_VERIFY_SSL,
 )
+from brd_export import build_brd_docx_bytes
 from services.magento import (
     magento_client,
     MAGENTO_URL,
@@ -1207,6 +1208,18 @@ def export_database(current_user: User = Depends(get_current_user)):
     return StreamingResponse(
         BytesIO(data),
         media_type="application/json",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@app.get("/api/brd/download")
+def download_brd(current_user: User = Depends(get_current_user)):
+    _ = current_user
+
+    filename = "BRD-olivit-app.docx"
+    return StreamingResponse(
+        BytesIO(build_brd_docx_bytes()),
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
