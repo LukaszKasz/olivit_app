@@ -27,7 +27,7 @@ from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 from database import engine, get_db, Base, SessionLocal
-from main_product_orders_api import MainProductTestOrderCreate, MainProductTestOrderResponse
+from main_product_orders_api import MainProductTestOrderCreate, MainProductTestOrderResponse, MainProductTestOrderUpdate
 from main_products_api import MainProductResponse, ProductDetailedParameterResponse
 from main_products_seed import MAIN_PRODUCTS
 from models import (
@@ -47,6 +47,7 @@ from variant_product_batch_orders_api import (
     VariantProductBatchCoARequest,
     VariantProductBatchTestOrderCreate,
     VariantProductBatchTestOrderResponse,
+    VariantProductBatchTestOrderUpdate,
 )
 from variant_product_finished_product_controls_api import (
     VariantProductFinishedProductControlCreate,
@@ -169,8 +170,15 @@ def serialize_variant_batch_row(row: VariantProductBatchTestOrder | VariantProdu
         "ean": row.ean,
         "laboratory_name": row.laboratory_name,
         "batch_number": row.batch_number,
+        "asana_task_number": row.asana_task_number,
         "batch_added_at": row.batch_added_at,
         "ordered_at": row.ordered_at,
+        "production_date": row.production_date,
+        "expiry_date": row.expiry_date,
+        "planned_test_date": row.planned_test_date,
+        "workflow_status": row.workflow_status,
+        "clarification_note": row.clarification_note,
+        "label_status": row.label_status,
         "printed_material_type": row.printed_material_type,
         "product_name": row.product_name,
         "product_project_number": row.product_project_number,
@@ -180,23 +188,161 @@ def serialize_variant_batch_row(row: VariantProductBatchTestOrder | VariantProdu
         "control_date": row.control_date,
         "market_label_version": row.market_label_version,
         "active_substances_match_pds": row.active_substances_match_pds,
+        "active_substances_match_pds_note": row.active_substances_match_pds_note,
         "label_version_matches_used_version": row.label_version_matches_used_version,
+        "label_version_matches_used_version_note": row.label_version_matches_used_version_note,
         "has_printing_errors": row.has_printing_errors,
+        "has_printing_errors_note": row.has_printing_errors_note,
         "has_graphic_design_errors": row.has_graphic_design_errors,
+        "has_graphic_design_errors_note": row.has_graphic_design_errors_note,
         "print_correctness": row.print_correctness,
+        "print_correctness_note": row.print_correctness_note,
         "has_labeling_errors": row.has_labeling_errors,
+        "has_labeling_errors_note": row.has_labeling_errors_note,
         "cap_is_correct": row.cap_is_correct,
+        "cap_is_correct_note": row.cap_is_correct_note,
         "induction_seal_weld_correct": row.induction_seal_weld_correct,
+        "induction_seal_weld_correct_note": row.induction_seal_weld_correct_note,
         "induction_seal_opening_correct": row.induction_seal_opening_correct,
+        "induction_seal_opening_correct_note": row.induction_seal_opening_correct_note,
         "package_is_dirty": row.package_is_dirty,
+        "package_is_dirty_note": row.package_is_dirty_note,
         "package_is_damaged": row.package_is_damaged,
+        "package_is_damaged_note": row.package_is_damaged_note,
         "qr_code_is_active": row.qr_code_is_active,
+        "qr_code_is_active_note": row.qr_code_is_active_note,
         "package_contents_match_card": row.package_contents_match_card,
+        "package_contents_match_card_note": row.package_contents_match_card_note,
         "product_verified": row.product_verified,
+        "product_verified_note": row.product_verified_note,
         "comment": row.comment,
         "control_saved_at": row.control_saved_at,
         "archived_at": getattr(row, "archived_at", None),
     }
+
+
+def serialize_variant_finished_product_control_row(row: VariantProductFinishedProductControl) -> dict:
+    return {
+        "id": row.id,
+        "ordered_test_id": row.ordered_test_id,
+        "project_number": get_project_number_from_variant_sku(row.sku),
+        "sku": row.sku,
+        "name": row.name,
+        "ean": row.ean,
+        "laboratory_name": row.laboratory_name,
+        "asana_task_number": row.asana_task_number,
+        "label_status": row.label_status,
+        "printed_material_type": row.printed_material_type,
+        "product_name": row.product_name,
+        "product_project_number": row.product_project_number,
+        "product_ean_number": row.product_ean_number,
+        "product_batch_number": row.product_batch_number,
+        "product_expiry_date": row.product_expiry_date,
+        "control_date": row.control_date,
+        "market_label_version": row.market_label_version,
+        "active_substances_match_pds": row.active_substances_match_pds,
+        "active_substances_match_pds_note": row.active_substances_match_pds_note,
+        "label_version_matches_used_version": row.label_version_matches_used_version,
+        "label_version_matches_used_version_note": row.label_version_matches_used_version_note,
+        "has_printing_errors": row.has_printing_errors,
+        "has_printing_errors_note": row.has_printing_errors_note,
+        "has_graphic_design_errors": row.has_graphic_design_errors,
+        "has_graphic_design_errors_note": row.has_graphic_design_errors_note,
+        "print_correctness": row.print_correctness,
+        "print_correctness_note": row.print_correctness_note,
+        "has_labeling_errors": row.has_labeling_errors,
+        "has_labeling_errors_note": row.has_labeling_errors_note,
+        "cap_is_correct": row.cap_is_correct,
+        "cap_is_correct_note": row.cap_is_correct_note,
+        "induction_seal_weld_correct": row.induction_seal_weld_correct,
+        "induction_seal_weld_correct_note": row.induction_seal_weld_correct_note,
+        "induction_seal_opening_correct": row.induction_seal_opening_correct,
+        "induction_seal_opening_correct_note": row.induction_seal_opening_correct_note,
+        "package_is_dirty": row.package_is_dirty,
+        "package_is_dirty_note": row.package_is_dirty_note,
+        "package_is_damaged": row.package_is_damaged,
+        "package_is_damaged_note": row.package_is_damaged_note,
+        "qr_code_is_active": row.qr_code_is_active,
+        "qr_code_is_active_note": row.qr_code_is_active_note,
+        "package_contents_match_card": row.package_contents_match_card,
+        "package_contents_match_card_note": row.package_contents_match_card_note,
+        "product_verified": row.product_verified,
+        "product_verified_note": row.product_verified_note,
+        "comment": row.comment,
+        "created_at": row.created_at,
+    }
+
+
+def derive_variant_label_status(control: VariantProductFinishedProductControl) -> str:
+    issue_flags = [
+        control.active_substances_match_pds not in {"Tak", "Nie dotyczy"},
+        control.label_version_matches_used_version != "Tak",
+        control.has_printing_errors != "Nie",
+        control.has_graphic_design_errors != "Nie",
+        control.print_correctness != "Tak",
+        control.has_labeling_errors != "Nie",
+        control.cap_is_correct not in {"Tak", "Nie dotyczy"},
+        control.induction_seal_weld_correct not in {"Tak", "Nie dotyczy"},
+        control.induction_seal_opening_correct not in {"Tak", "Nie dotyczy"},
+        control.package_is_dirty != "Nie",
+        control.package_is_damaged != "Nie",
+        control.qr_code_is_active not in {"Tak", "Nie dotyczy"},
+        control.package_contents_match_card != "Tak",
+        control.product_verified != "Tak",
+    ]
+    return "incorrect" if any(issue_flags) else "correct"
+
+
+def create_default_variant_finished_product_control(
+    order: VariantProductBatchTestOrder,
+) -> VariantProductFinishedProductControl:
+    project_number = get_project_number_from_variant_sku(order.sku) or ""
+    return VariantProductFinishedProductControl(
+        ordered_test_id=order.id,
+        sku=order.sku,
+        name=order.name,
+        ean=order.ean,
+        laboratory_name=order.laboratory_name,
+        asana_task_number=order.asana_task_number,
+        label_status="current",
+        printed_material_type="",
+        product_name=order.name,
+        product_project_number=project_number,
+        product_ean_number=order.ean,
+        product_batch_number=order.batch_number,
+        product_expiry_date=order.expiry_date or "",
+        control_date="",
+        market_label_version="",
+        active_substances_match_pds="",
+        active_substances_match_pds_note=None,
+        label_version_matches_used_version="",
+        label_version_matches_used_version_note=None,
+        has_printing_errors="",
+        has_printing_errors_note=None,
+        has_graphic_design_errors="",
+        has_graphic_design_errors_note=None,
+        print_correctness="",
+        print_correctness_note=None,
+        has_labeling_errors="",
+        has_labeling_errors_note=None,
+        cap_is_correct="",
+        cap_is_correct_note=None,
+        induction_seal_weld_correct="",
+        induction_seal_weld_correct_note=None,
+        induction_seal_opening_correct="",
+        induction_seal_opening_correct_note=None,
+        package_is_dirty="",
+        package_is_dirty_note=None,
+        package_is_damaged="",
+        package_is_damaged_note=None,
+        qr_code_is_active="",
+        qr_code_is_active_note=None,
+        package_contents_match_card="",
+        package_contents_match_card_note=None,
+        product_verified="",
+        product_verified_note=None,
+        comment=None,
+    )
 
 
 def serialize_database_value(value):
@@ -721,9 +867,30 @@ def ensure_main_product_test_orders_schema() -> None:
     except Exception:
         return
 
+    statements = []
     if "batch_number" not in columns:
+        statements.append("ALTER TABLE main_product_test_orders ADD COLUMN batch_number VARCHAR(255)")
+    if "asana_task_number" not in columns:
+        statements.append("ALTER TABLE main_product_test_orders ADD COLUMN asana_task_number VARCHAR(255)")
+    if "production_date" not in columns:
+        statements.append("ALTER TABLE main_product_test_orders ADD COLUMN production_date VARCHAR(50)")
+    if "expiry_date" not in columns:
+        statements.append("ALTER TABLE main_product_test_orders ADD COLUMN expiry_date VARCHAR(50)")
+    if "planned_test_date" not in columns:
+        statements.append("ALTER TABLE main_product_test_orders ADD COLUMN planned_test_date VARCHAR(50)")
+    if "workflow_status" not in columns:
+        statements.append("ALTER TABLE main_product_test_orders ADD COLUMN workflow_status VARCHAR(50)")
+    if "clarification_note" not in columns:
+        statements.append("ALTER TABLE main_product_test_orders ADD COLUMN clarification_note VARCHAR(2000)")
+
+    if statements:
         with engine.begin() as connection:
-            connection.execute(text("ALTER TABLE main_product_test_orders ADD COLUMN batch_number VARCHAR(255)"))
+            for statement in statements:
+                connection.execute(text(statement))
+            if "workflow_status" not in columns:
+                connection.execute(text("UPDATE main_product_test_orders SET workflow_status = 'ordered_tests' WHERE workflow_status IS NULL"))
+                connection.execute(text("ALTER TABLE main_product_test_orders ALTER COLUMN workflow_status SET DEFAULT 'ordered_tests'"))
+                connection.execute(text("ALTER TABLE main_product_test_orders ALTER COLUMN workflow_status SET NOT NULL"))
 
     if "laboratory_name" in columns:
         with engine.begin() as connection:
@@ -742,8 +909,19 @@ def ensure_variant_product_batch_test_orders_schema() -> None:
         statements.append("ALTER TABLE variant_product_batch_test_orders ALTER COLUMN laboratory_name DROP NOT NULL")
     if "ordered_at" in columns:
         statements.append("ALTER TABLE variant_product_batch_test_orders ALTER COLUMN ordered_at DROP NOT NULL")
+    if "asana_task_number" not in columns:
+        statements.append("ALTER TABLE variant_product_batch_test_orders ADD COLUMN asana_task_number VARCHAR(255)")
+    if "workflow_status" not in columns:
+        statements.append("ALTER TABLE variant_product_batch_test_orders ADD COLUMN workflow_status VARCHAR(50)")
+    if "clarification_note" not in columns:
+        statements.append("ALTER TABLE variant_product_batch_test_orders ADD COLUMN clarification_note VARCHAR(2000)")
+    if "label_status" not in columns:
+        statements.append("ALTER TABLE variant_product_batch_test_orders ADD COLUMN label_status VARCHAR(50)")
 
     extra_columns = {
+        "production_date": "VARCHAR(50)",
+        "expiry_date": "VARCHAR(50)",
+        "planned_test_date": "VARCHAR(50)",
         "batch_added_at": "TIMESTAMP WITH TIME ZONE",
         "printed_material_type": "VARCHAR(100)",
         "product_name": "VARCHAR(255)",
@@ -754,19 +932,33 @@ def ensure_variant_product_batch_test_orders_schema() -> None:
         "control_date": "VARCHAR(50)",
         "market_label_version": "VARCHAR(255)",
         "active_substances_match_pds": "VARCHAR(50)",
+        "active_substances_match_pds_note": "VARCHAR(2000)",
         "label_version_matches_used_version": "VARCHAR(10)",
+        "label_version_matches_used_version_note": "VARCHAR(2000)",
         "has_printing_errors": "VARCHAR(10)",
+        "has_printing_errors_note": "VARCHAR(2000)",
         "has_graphic_design_errors": "VARCHAR(10)",
+        "has_graphic_design_errors_note": "VARCHAR(2000)",
         "print_correctness": "VARCHAR(10)",
+        "print_correctness_note": "VARCHAR(2000)",
         "has_labeling_errors": "VARCHAR(10)",
+        "has_labeling_errors_note": "VARCHAR(2000)",
         "cap_is_correct": "VARCHAR(20)",
+        "cap_is_correct_note": "VARCHAR(2000)",
         "induction_seal_weld_correct": "VARCHAR(20)",
+        "induction_seal_weld_correct_note": "VARCHAR(2000)",
         "induction_seal_opening_correct": "VARCHAR(20)",
+        "induction_seal_opening_correct_note": "VARCHAR(2000)",
         "package_is_dirty": "VARCHAR(10)",
+        "package_is_dirty_note": "VARCHAR(2000)",
         "package_is_damaged": "VARCHAR(10)",
+        "package_is_damaged_note": "VARCHAR(2000)",
         "qr_code_is_active": "VARCHAR(20)",
+        "qr_code_is_active_note": "VARCHAR(2000)",
         "package_contents_match_card": "VARCHAR(10)",
+        "package_contents_match_card_note": "VARCHAR(2000)",
         "product_verified": "VARCHAR(10)",
+        "product_verified_note": "VARCHAR(2000)",
         "comment": "VARCHAR(2000)",
         "control_saved_at": "TIMESTAMP WITH TIME ZONE",
     }
@@ -779,18 +971,99 @@ def ensure_variant_product_batch_test_orders_schema() -> None:
         with engine.begin() as connection:
             for statement in statements:
                 connection.execute(text(statement))
+            if "workflow_status" not in columns:
+                connection.execute(text("UPDATE variant_product_batch_test_orders SET workflow_status = 'ordered_tests' WHERE workflow_status IS NULL"))
+                connection.execute(text("ALTER TABLE variant_product_batch_test_orders ALTER COLUMN workflow_status SET DEFAULT 'ordered_tests'"))
+                connection.execute(text("ALTER TABLE variant_product_batch_test_orders ALTER COLUMN workflow_status SET NOT NULL"))
+            if "label_status" not in columns:
+                connection.execute(text("UPDATE variant_product_batch_test_orders SET label_status = 'current' WHERE label_status IS NULL"))
 
     if "batch_added_at" not in columns:
         with engine.begin() as connection:
             connection.execute(text("UPDATE variant_product_batch_test_orders SET batch_added_at = COALESCE(ordered_at, NOW()) WHERE batch_added_at IS NULL"))
 
 
+def ensure_variant_product_batch_test_orders_archive_schema() -> None:
+    inspector = inspect(engine)
+    try:
+        columns = {col["name"] for col in inspector.get_columns("variant_product_batch_test_orders_archive")}
+    except Exception:
+        return
+
+    statements: list[str] = []
+    extra_columns = {
+        "production_date": "VARCHAR(50)",
+        "expiry_date": "VARCHAR(50)",
+        "planned_test_date": "VARCHAR(50)",
+        "asana_task_number": "VARCHAR(255)",
+        "workflow_status": "VARCHAR(50)",
+        "clarification_note": "VARCHAR(2000)",
+        "label_status": "VARCHAR(50)",
+        "active_substances_match_pds_note": "VARCHAR(2000)",
+        "label_version_matches_used_version_note": "VARCHAR(2000)",
+        "has_printing_errors_note": "VARCHAR(2000)",
+        "has_graphic_design_errors_note": "VARCHAR(2000)",
+        "print_correctness_note": "VARCHAR(2000)",
+        "has_labeling_errors_note": "VARCHAR(2000)",
+        "cap_is_correct_note": "VARCHAR(2000)",
+        "induction_seal_weld_correct_note": "VARCHAR(2000)",
+        "induction_seal_opening_correct_note": "VARCHAR(2000)",
+        "package_is_dirty_note": "VARCHAR(2000)",
+        "package_is_damaged_note": "VARCHAR(2000)",
+        "qr_code_is_active_note": "VARCHAR(2000)",
+        "package_contents_match_card_note": "VARCHAR(2000)",
+        "product_verified_note": "VARCHAR(2000)",
+    }
+
+    for column_name, column_type in extra_columns.items():
+        if column_name not in columns:
+            statements.append(f"ALTER TABLE variant_product_batch_test_orders_archive ADD COLUMN {column_name} {column_type}")
+
+    if statements:
+        with engine.begin() as connection:
+            for statement in statements:
+                connection.execute(text(statement))
+
+
 def ensure_variant_product_finished_product_controls_schema() -> None:
     inspector = inspect(engine)
     try:
-        inspector.get_columns("variant_product_finished_product_controls")
+        columns = {col["name"] for col in inspector.get_columns("variant_product_finished_product_controls")}
     except Exception:
         return
+
+    statements: list[str] = []
+    extra_columns = {
+        "ordered_test_id": "INTEGER",
+        "laboratory_name": "VARCHAR(100)",
+        "asana_task_number": "VARCHAR(255)",
+        "label_status": "VARCHAR(50)",
+        "active_substances_match_pds_note": "VARCHAR(2000)",
+        "label_version_matches_used_version_note": "VARCHAR(2000)",
+        "has_printing_errors_note": "VARCHAR(2000)",
+        "has_graphic_design_errors_note": "VARCHAR(2000)",
+        "print_correctness_note": "VARCHAR(2000)",
+        "has_labeling_errors_note": "VARCHAR(2000)",
+        "cap_is_correct_note": "VARCHAR(2000)",
+        "induction_seal_weld_correct_note": "VARCHAR(2000)",
+        "induction_seal_opening_correct_note": "VARCHAR(2000)",
+        "package_is_dirty_note": "VARCHAR(2000)",
+        "package_is_damaged_note": "VARCHAR(2000)",
+        "qr_code_is_active_note": "VARCHAR(2000)",
+        "package_contents_match_card_note": "VARCHAR(2000)",
+        "product_verified_note": "VARCHAR(2000)",
+    }
+
+    for column_name, column_type in extra_columns.items():
+        if column_name not in columns:
+            statements.append(f"ALTER TABLE variant_product_finished_product_controls ADD COLUMN {column_name} {column_type}")
+
+    if statements:
+        with engine.begin() as connection:
+            for statement in statements:
+                connection.execute(text(statement))
+            if "label_status" not in columns:
+                connection.execute(text("UPDATE variant_product_finished_product_controls SET label_status = 'current' WHERE label_status IS NULL"))
 
 
 def ensure_integration_settings_seed(db: Session) -> None:
@@ -1108,6 +1381,7 @@ def startup_seed_settings():
         ensure_integration_settings_schema()
         ensure_main_product_test_orders_schema()
         ensure_variant_product_batch_test_orders_schema()
+        ensure_variant_product_batch_test_orders_archive_schema()
         ensure_variant_product_finished_product_controls_schema()
         ensure_integration_settings_seed(db)
         ensure_main_products_seed(db)
@@ -1392,6 +1666,10 @@ def create_main_product_test_order(
     name = payload.name.strip()
     laboratory_name = (payload.laboratory_name or "").strip()
     batch_number = payload.batch_number.strip()
+    asana_task_number = (payload.asana_task_number or "").strip()
+    production_date = (payload.production_date or "").strip()
+    expiry_date = (payload.expiry_date or "").strip()
+    planned_test_date = (payload.planned_test_date or "").strip()
 
     if not project_number or not name or not batch_number:
         raise HTTPException(
@@ -1404,7 +1682,47 @@ def create_main_product_test_order(
         name=name,
         laboratory_name=laboratory_name,
         batch_number=batch_number,
+        asana_task_number=asana_task_number or None,
+        production_date=production_date or None,
+        expiry_date=expiry_date or None,
+        planned_test_date=planned_test_date or None,
+        workflow_status="ordered_tests",
     )
+    db.add(order)
+    db.commit()
+    db.refresh(order)
+    return order
+
+
+@app.patch("/api/main-products/ordered-tests/{order_id}", response_model=MainProductTestOrderResponse)
+def update_main_product_test_order(
+    order_id: int,
+    payload: MainProductTestOrderUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _ = current_user
+
+    order = db.query(MainProductTestOrder).filter(MainProductTestOrder.id == order_id).first()
+    if not order:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Main product test order not found",
+        )
+
+    if payload.workflow_status is not None:
+        allowed_statuses = {"ordered_tests", "to_pack", "to_clarify", "archive"}
+        workflow_status = payload.workflow_status.strip()
+        if workflow_status not in allowed_statuses:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid workflow_status",
+            )
+        order.workflow_status = workflow_status
+
+    if payload.clarification_note is not None:
+        order.clarification_note = payload.clarification_note.strip() or None
+
     db.add(order)
     db.commit()
     db.refresh(order)
@@ -1419,6 +1737,22 @@ def get_variant_product_batch_test_orders(
     _ = current_user
     rows = (
         db.query(VariantProductBatchTestOrder)
+        .filter(VariantProductBatchTestOrder.workflow_status != "to_clarify")
+        .order_by(VariantProductBatchTestOrder.batch_added_at.desc(), VariantProductBatchTestOrder.id.desc())
+        .all()
+    )
+    return [serialize_variant_batch_row(row) for row in rows]
+
+
+@app.get("/api/variant-products/batches/to-clarify", response_model=list[VariantProductBatchTestOrderResponse])
+def get_variant_product_batch_test_orders_to_clarify(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _ = current_user
+    rows = (
+        db.query(VariantProductBatchTestOrder)
+        .filter(VariantProductBatchTestOrder.workflow_status == "to_clarify")
         .order_by(VariantProductBatchTestOrder.batch_added_at.desc(), VariantProductBatchTestOrder.id.desc())
         .all()
     )
@@ -1452,6 +1786,10 @@ def create_variant_product_batch_test_order(
     ean = payload.ean.strip()
     laboratory_name = (payload.laboratory_name or "").strip()
     batch_number = payload.batch_number.strip()
+    asana_task_number = (payload.asana_task_number or "").strip()
+    production_date = (payload.production_date or "").strip()
+    expiry_date = (payload.expiry_date or "").strip()
+    planned_test_date = (payload.planned_test_date or "").strip()
 
     if not sku or not name or not ean or not batch_number:
         raise HTTPException(
@@ -1465,9 +1803,58 @@ def create_variant_product_batch_test_order(
         ean=ean,
         laboratory_name=laboratory_name or None,
         batch_number=batch_number,
+        asana_task_number=asana_task_number or None,
+        production_date=production_date or None,
+        expiry_date=expiry_date or None,
+        planned_test_date=planned_test_date or None,
+        workflow_status="ordered_tests",
+        label_status="current",
         batch_added_at=datetime.now(timezone.utc),
         ordered_at=datetime.now(timezone.utc) if laboratory_name else None,
     )
+    db.add(order)
+    db.commit()
+    db.refresh(order)
+    existing_control = (
+        db.query(VariantProductFinishedProductControl)
+        .filter(VariantProductFinishedProductControl.ordered_test_id == order.id)
+        .first()
+    )
+    if not existing_control:
+        db.add(create_default_variant_finished_product_control(order))
+        db.commit()
+    return serialize_variant_batch_row(order)
+
+
+@app.patch("/api/variant-products/batches/ordered-tests/{order_id}", response_model=VariantProductBatchTestOrderResponse)
+def update_variant_product_batch_test_order(
+    order_id: int,
+    payload: VariantProductBatchTestOrderUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _ = current_user
+
+    order = db.query(VariantProductBatchTestOrder).filter(VariantProductBatchTestOrder.id == order_id).first()
+    if not order:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Variant product batch test order not found",
+        )
+
+    if payload.workflow_status is not None:
+        workflow_status = payload.workflow_status.strip()
+        allowed_statuses = {"ordered_tests", "to_clarify"}
+        if workflow_status not in allowed_statuses:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid workflow_status",
+            )
+        order.workflow_status = workflow_status
+
+    if payload.clarification_note is not None:
+        order.clarification_note = payload.clarification_note.strip() or None
+
     db.add(order)
     db.commit()
     db.refresh(order)
@@ -1508,6 +1895,13 @@ def archive_variant_product_batch_test_orders(
                 ean=row.ean,
                 laboratory_name=row.laboratory_name,
                 batch_number=row.batch_number,
+                asana_task_number=row.asana_task_number,
+                production_date=row.production_date,
+                expiry_date=row.expiry_date,
+                planned_test_date=row.planned_test_date,
+                workflow_status="archive",
+                clarification_note=row.clarification_note,
+                label_status=row.label_status,
                 batch_added_at=row.batch_added_at,
                 ordered_at=row.ordered_at,
                 printed_material_type=row.printed_material_type,
@@ -1519,19 +1913,33 @@ def archive_variant_product_batch_test_orders(
                 control_date=row.control_date,
                 market_label_version=row.market_label_version,
                 active_substances_match_pds=row.active_substances_match_pds,
+                active_substances_match_pds_note=row.active_substances_match_pds_note,
                 label_version_matches_used_version=row.label_version_matches_used_version,
+                label_version_matches_used_version_note=row.label_version_matches_used_version_note,
                 has_printing_errors=row.has_printing_errors,
+                has_printing_errors_note=row.has_printing_errors_note,
                 has_graphic_design_errors=row.has_graphic_design_errors,
+                has_graphic_design_errors_note=row.has_graphic_design_errors_note,
                 print_correctness=row.print_correctness,
+                print_correctness_note=row.print_correctness_note,
                 has_labeling_errors=row.has_labeling_errors,
+                has_labeling_errors_note=row.has_labeling_errors_note,
                 cap_is_correct=row.cap_is_correct,
+                cap_is_correct_note=row.cap_is_correct_note,
                 induction_seal_weld_correct=row.induction_seal_weld_correct,
+                induction_seal_weld_correct_note=row.induction_seal_weld_correct_note,
                 induction_seal_opening_correct=row.induction_seal_opening_correct,
+                induction_seal_opening_correct_note=row.induction_seal_opening_correct_note,
                 package_is_dirty=row.package_is_dirty,
+                package_is_dirty_note=row.package_is_dirty_note,
                 package_is_damaged=row.package_is_damaged,
+                package_is_damaged_note=row.package_is_damaged_note,
                 qr_code_is_active=row.qr_code_is_active,
+                qr_code_is_active_note=row.qr_code_is_active_note,
                 package_contents_match_card=row.package_contents_match_card,
+                package_contents_match_card_note=row.package_contents_match_card_note,
                 product_verified=row.product_verified,
+                product_verified_note=row.product_verified_note,
                 comment=row.comment,
                 control_saved_at=row.control_saved_at,
                 archived_at=datetime.now(timezone.utc),
@@ -1623,11 +2031,12 @@ def get_variant_product_finished_product_controls(
     current_user: User = Depends(get_current_user),
 ):
     _ = current_user
-    return (
+    rows = (
         db.query(VariantProductFinishedProductControl)
         .order_by(VariantProductFinishedProductControl.created_at.desc(), VariantProductFinishedProductControl.id.desc())
         .all()
     )
+    return [serialize_variant_finished_product_control_row(row) for row in rows]
 
 
 @app.post(
@@ -1641,6 +2050,30 @@ def create_variant_product_finished_product_control(
     current_user: User = Depends(get_current_user),
 ):
     _ = current_user
+
+    label_status = payload.label_status.strip()
+    if label_status not in {"incorrect", "correct"}:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid label_status",
+        )
+
+    note_inputs = {
+        "active_substances_match_pds_note": (payload.active_substances_match_pds_note or "").strip(),
+        "label_version_matches_used_version_note": (payload.label_version_matches_used_version_note or "").strip(),
+        "has_printing_errors_note": (payload.has_printing_errors_note or "").strip(),
+        "has_graphic_design_errors_note": (payload.has_graphic_design_errors_note or "").strip(),
+        "print_correctness_note": (payload.print_correctness_note or "").strip(),
+        "has_labeling_errors_note": (payload.has_labeling_errors_note or "").strip(),
+        "cap_is_correct_note": (payload.cap_is_correct_note or "").strip(),
+        "induction_seal_weld_correct_note": (payload.induction_seal_weld_correct_note or "").strip(),
+        "induction_seal_opening_correct_note": (payload.induction_seal_opening_correct_note or "").strip(),
+        "package_is_dirty_note": (payload.package_is_dirty_note or "").strip(),
+        "package_is_damaged_note": (payload.package_is_damaged_note or "").strip(),
+        "qr_code_is_active_note": (payload.qr_code_is_active_note or "").strip(),
+        "package_contents_match_card_note": (payload.package_contents_match_card_note or "").strip(),
+        "product_verified_note": (payload.product_verified_note or "").strip(),
+    }
 
     fields = {
         "sku": payload.sku.strip(),
@@ -1676,39 +2109,110 @@ def create_variant_product_finished_product_control(
             detail="All required finished product control fields must be filled in",
         )
 
+    note_requirements = {
+        "active_substances_match_pds": "active_substances_match_pds_note",
+        "label_version_matches_used_version": "label_version_matches_used_version_note",
+        "has_printing_errors": "has_printing_errors_note",
+        "has_graphic_design_errors": "has_graphic_design_errors_note",
+        "print_correctness": "print_correctness_note",
+        "has_labeling_errors": "has_labeling_errors_note",
+        "cap_is_correct": "cap_is_correct_note",
+        "induction_seal_weld_correct": "induction_seal_weld_correct_note",
+        "induction_seal_opening_correct": "induction_seal_opening_correct_note",
+        "package_is_dirty": "package_is_dirty_note",
+        "package_is_damaged": "package_is_damaged_note",
+        "qr_code_is_active": "qr_code_is_active_note",
+        "package_contents_match_card": "package_contents_match_card_note",
+        "product_verified": "product_verified_note",
+    }
+    for answer_field, note_field in note_requirements.items():
+        if fields[answer_field] == "Nie" and not note_inputs[note_field]:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="All negative answers must include notes",
+            )
+
+    question_labels = {
+        "active_substances_match_pds_note": "Czy zawartość substancji aktywnych na etykiecie jest zgodna ze specyfikacją analityczną w PDS?",
+        "label_version_matches_used_version_note": "Aktualna wersja etykiety/kartonika jest zgodna z użytą wersją etykiety/kartonika",
+        "has_printing_errors_note": "Czy na opakowaniu znajdują się błędy drukarskie? (np. pogrubienie)",
+        "has_graphic_design_errors_note": "Czy na opakowaniu znajdują się błędy w projekcie graficznym?",
+        "print_correctness_note": "Poprawność nadruku (TP/partia; np. ścieranie się)",
+        "has_labeling_errors_note": "Czy opakowanie posiada błędy w sposobie oklejenia (krzywa etykieta, zagięcia, ślady kleju)?",
+        "cap_is_correct_note": "Nakrętka: czy jest prawidłowa (np. bez marmurku)",
+        "induction_seal_weld_correct_note": "Wkładka indukcyjna: poprawność zgrzewu",
+        "induction_seal_opening_correct_note": "Wkładka indukcyjna: poprawność otwierania",
+        "package_is_dirty_note": "Czy opakowanie jest zabrudzone?",
+        "package_is_damaged_note": "Czy opakowanie jest uszkodzone (np. wgniecenie, pęknięcie)",
+        "qr_code_is_active_note": "Czy kod QR jest aktywny?",
+        "package_contents_match_card_note": "Zawartość opakowania zgodna z Kartą Produktu (w tym miarka przy proszkach)",
+        "product_verified_note": "Poprawność produktu została zweryfikowana",
+    }
+    aggregated_comment_parts = []
+    for note_field, note_value in note_inputs.items():
+        if note_value:
+            aggregated_comment_parts.append(
+                f"Pytanie: {question_labels[note_field]}\nUwagi: {note_value}"
+            )
+
+    extra_comment = (payload.comment or "").strip()
+    if extra_comment:
+        aggregated_comment_parts.append(f"Komentarz dodatkowy:\n{extra_comment}")
+
+    aggregated_comment = "\n\n".join(aggregated_comment_parts) or None
+
     order = (
         db.query(VariantProductBatchTestOrder)
         .filter(VariantProductBatchTestOrder.id == payload.ordered_test_id)
         .first()
     )
-    if not order:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Nie znaleziono partii do uzupełnienia formularza",
-        )
 
-    if order.sku != fields["sku"]:
+    if order and order.sku != fields["sku"]:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Dane formularza nie pasują do wybranej partii",
         )
 
-    for key, value in fields.items():
-        setattr(order, key, value)
+    order_comment = (payload.comment or "").strip() or None
 
-    order.batch_number = fields["product_batch_number"]
-    order.comment = (payload.comment or "").strip() or None
-    order.control_saved_at = datetime.utcnow()
+    if order:
+        for key, value in fields.items():
+            setattr(order, key, value)
+        for note_field in note_inputs:
+            setattr(order, note_field, None)
 
-    control = VariantProductFinishedProductControl(
-        **fields,
-        comment=order.comment,
+        order.batch_number = fields["product_batch_number"]
+        order.comment = aggregated_comment
+        order.control_saved_at = datetime.utcnow()
+
+    control = (
+        db.query(VariantProductFinishedProductControl)
+        .filter(VariantProductFinishedProductControl.ordered_test_id == payload.ordered_test_id)
+        .first()
     )
+    if not control:
+        control = create_default_variant_finished_product_control(order) if order else VariantProductFinishedProductControl()
+
+    for key, value in fields.items():
+        setattr(control, key, value)
+    for note_field in note_inputs:
+        setattr(control, note_field, None)
+    control.ordered_test_id = order.id if order else payload.ordered_test_id
+    control.laboratory_name = order.laboratory_name if order else control.laboratory_name
+    control.asana_task_number = order.asana_task_number if order else control.asana_task_number
+    control.label_status = label_status
+    control.comment = aggregated_comment
+
+    if order:
+        order.label_status = control.label_status
     db.add(control)
+    if order:
+        db.add(order)
     db.commit()
     db.refresh(control)
-    db.refresh(order)
-    return control
+    if order:
+        db.refresh(order)
+    return serialize_variant_finished_product_control_row(control)
 
 
 @app.get("/api/integrations/settings", response_model=IntegrationSettingsResponseDTO)

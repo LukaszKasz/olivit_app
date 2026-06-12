@@ -10,8 +10,7 @@ function AppLayout() {
         <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
             <Sidebar collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(!sidebarCollapsed)} />
             <div
-                className="transition-all duration-300"
-                style={{ marginLeft: sidebarCollapsed ? '72px' : '256px' }}
+                className={`transition-all duration-300 ${sidebarCollapsed ? 'md:ml-[72px]' : 'md:ml-64'}`}
             >
                 <header className="sticky top-0 z-10 flex items-center justify-end h-16 px-6 bg-white/80 backdrop-blur-md border-b border-slate-200/60">
                     <LanguageSwitcher />

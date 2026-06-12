@@ -41,12 +41,13 @@ function LoginForm() {
     };
 
     return (
-        <div className="min-h-screen flex items-center justify-center px-4">
-            <div className="absolute top-4 right-4">
+        <div className="relative flex min-h-screen items-center justify-center overflow-hidden px-4 py-10">
+            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(148,163,184,0.18),_transparent_36%),radial-gradient(circle_at_bottom_right,_rgba(59,130,246,0.12),_transparent_32%)]" />
+            <div className="absolute right-4 top-4 z-10">
                 <LanguageSwitcher />
             </div>
 
-            <div className="card max-w-md w-full">
+            <div className="relative z-10 w-full max-w-md rounded-3xl border border-white/60 bg-white/90 p-8 shadow-2xl shadow-slate-200/70 backdrop-blur">
                 <div className="text-center mb-8">
                     <h1 className="text-3xl font-bold text-slate-800 mb-2">{t('login.title')}</h1>
                     <p className="text-slate-600">{t('login.subtitle')}</p>

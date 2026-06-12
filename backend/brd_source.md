@@ -228,13 +228,16 @@ Otwiera dane z tabeli `product_detailed_parameters`, grupowane po typie parametr
 
 ### Cel
 
-Lista zleconych badań dla produktów głównych.
+Widok `Badania zlecone` w module `Bulk / Baza produktów` prezentuje listę produktów głównych, dla których został uruchomiony proces badań laboratoryjnych.
 
 ### Zakres
 
+- dane widoczne w tym widoku pochodzą z aplikacji `Olivit QMS` i są tworzone w momencie użycia akcji `Zleć badania` z poziomu widoku głównego modułu `Bulk / Baza produktów`
+- produkt źródłowy pochodzi z `Pimcore`, natomiast informacje związane ze zleceniem badania, statusem, numerem serii oraz datami są przechowywane w aplikacji
 - kolumny:
-  numer projektu, nazwa, numer serii, data zlecenia, laboratorium
-- tylko odczyt
+  numer projektu, nazwa projektu / produktu, laboratorium, numer serii, data produkcji, data ważności, data realizacji badania, status
+- widok tylko do odczytu
+- rekord pojawia się w tym widoku po utworzeniu zlecenia badania
 
 ### Źródło danych
 

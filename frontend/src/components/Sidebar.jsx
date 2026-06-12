@@ -28,6 +28,7 @@ function Sidebar({ collapsed, onToggle }) {
         [
             { to: '/product-variants', label: 'Produkty spakowane / Warianty' },
             { to: '/product-variants/batches/ordered-tests', label: 'Produkty spakowane / Warianty - Badania zlecone' },
+            { to: '/product-variants/batches/to-clarify', label: 'Produkty spakowane / Warianty - Do wyjaśnienia' },
             { to: '/product-variants/finished-product-control', label: 'Produkty spakowane / Warianty - Kontrola produktu gotowego - Bieżące' },
             { to: '/product-variants/finished-product-control/incorrect', label: 'Produkty spakowane / Warianty - Kontrola produktu gotowego - Błędne' },
             { to: '/product-variants/finished-product-control/correct', label: 'Produkty spakowane / Warianty - Kontrola produktu gotowego - Poprawne' },

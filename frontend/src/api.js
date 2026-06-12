@@ -150,6 +150,10 @@ export const mainProductsAPI = {
         const response = await api.get('/api/main-products/ordered-tests');
         return response.data;
     },
+    updateOrderedTest: async (orderId, payload) => {
+        const response = await api.patch(`/api/main-products/ordered-tests/${orderId}`, payload);
+        return response.data;
+    },
 };
 
 export const variantProductsAPI = {
@@ -171,8 +175,16 @@ export const variantProductsAPI = {
         const response = await api.get('/api/variant-products/batches/ordered-tests');
         return response.data;
     },
+    getClarificationBatchTests: async () => {
+        const response = await api.get('/api/variant-products/batches/to-clarify');
+        return response.data;
+    },
     getArchivedBatchTests: async () => {
         const response = await api.get('/api/variant-products/batches/archive');
+        return response.data;
+    },
+    updateBatchTest: async (orderId, payload) => {
+        const response = await api.patch(`/api/variant-products/batches/ordered-tests/${orderId}`, payload);
         return response.data;
     },
     archiveBatchTests: async (ids) => {

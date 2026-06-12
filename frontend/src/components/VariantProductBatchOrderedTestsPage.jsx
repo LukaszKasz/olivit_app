@@ -4,49 +4,158 @@ import { variantProductsAPI } from '../api';
 const MATERIAL_TYPES = ['Etykieta+opakowanie', 'Kartonik'];
 const YES_NO = ['Tak', 'Nie'];
 const YES_NO_NA = ['Tak', 'Nie', 'Nie dotyczy'];
+const TEST_STATUS_META = {
+    ordered_tests: { label: 'Badania zlecone', className: 'bg-amber-100 text-amber-800' },
+    to_clarify: { label: 'Do wyjaśnienia', className: 'bg-rose-100 text-rose-800' },
+    archive: { label: 'Badania ukończone', className: 'bg-slate-200 text-slate-800' },
+};
+const LABEL_STATUS_META = {
+    current: { label: 'Bieżące', className: 'bg-sky-100 text-sky-800' },
+    incorrect: { label: 'Błędne', className: 'bg-rose-100 text-rose-800' },
+    correct: { label: 'Poprawne', className: 'bg-emerald-100 text-emerald-800' },
+};
+
+const CONTROL_QUESTION_FIELDS = [
+    {
+        field: 'active_substances_match_pds',
+        noteField: 'active_substances_match_pds_note',
+        label: 'Czy zawartość substancji aktywnych na etykiecie jest zgodna ze specyfikacją analityczną w PDS?',
+        options: YES_NO_NA,
+    },
+    {
+        field: 'label_version_matches_used_version',
+        noteField: 'label_version_matches_used_version_note',
+        label: 'Aktualna wersja etykiety/kartonika jest zgodna z użytą wersją etykiety/kartonika',
+        options: YES_NO,
+    },
+    {
+        field: 'has_printing_errors',
+        noteField: 'has_printing_errors_note',
+        label: 'Czy na opakowaniu znajdują się błędy drukarskie? (np. pogrubienie)',
+        options: YES_NO,
+    },
+    {
+        field: 'has_graphic_design_errors',
+        noteField: 'has_graphic_design_errors_note',
+        label: 'Czy na opakowaniu znajdują się błędy w projekcie graficznym?',
+        options: YES_NO,
+    },
+    {
+        field: 'print_correctness',
+        noteField: 'print_correctness_note',
+        label: 'Poprawność nadruku (TP/partia; np. ścieranie się)',
+        options: YES_NO,
+    },
+    {
+        field: 'has_labeling_errors',
+        noteField: 'has_labeling_errors_note',
+        label: 'Czy opakowanie posiada błędy w sposobie oklejenia (krzywa etykieta, zagięcia, ślady kleju)?',
+        options: YES_NO,
+    },
+    {
+        field: 'cap_is_correct',
+        noteField: 'cap_is_correct_note',
+        label: 'Nakrętka: czy jest prawidłowa (np. bez marmurku)',
+        options: YES_NO_NA,
+    },
+    {
+        field: 'induction_seal_weld_correct',
+        noteField: 'induction_seal_weld_correct_note',
+        label: 'Wkładka indukcyjna: poprawność zgrzewu',
+        options: YES_NO_NA,
+    },
+    {
+        field: 'induction_seal_opening_correct',
+        noteField: 'induction_seal_opening_correct_note',
+        label: 'Wkładka indukcyjna: poprawność otwierania',
+        options: YES_NO_NA,
+    },
+    {
+        field: 'package_is_dirty',
+        noteField: 'package_is_dirty_note',
+        label: 'Czy opakowanie jest zabrudzone?',
+        options: YES_NO,
+    },
+    {
+        field: 'package_is_damaged',
+        noteField: 'package_is_damaged_note',
+        label: 'Czy opakowanie jest uszkodzone (np. wgniecenie, pęknięcie)',
+        options: YES_NO,
+    },
+    {
+        field: 'qr_code_is_active',
+        noteField: 'qr_code_is_active_note',
+        label: 'Czy kod QR jest aktywny?',
+        options: YES_NO_NA,
+    },
+    {
+        field: 'package_contents_match_card',
+        noteField: 'package_contents_match_card_note',
+        label: 'Zawartość opakowania zgodna z Kartą Produktu (w tym miarka przy proszkach)',
+        options: YES_NO,
+    },
+    {
+        field: 'product_verified',
+        noteField: 'product_verified_note',
+        label: 'Poprawność produktu została zweryfikowana',
+        options: YES_NO,
+    },
+];
 
 function createInitialForm(order = null) {
-    const today = new Date().toISOString().slice(0, 10);
-
     return {
         ordered_test_id: order?.id || null,
         sku: order?.sku || '',
         name: order?.name || '',
         ean: order?.ean || '',
-        printed_material_type: order?.printed_material_type || 'Etykieta+opakowanie',
+        printed_material_type: '',
         product_name: order?.product_name || order?.name || '',
-        product_project_number: order?.product_project_number || '',
-        product_ean_number: order?.ean || '',
-        product_batch_number: order?.product_batch_number || order?.batch_number || '',
-        product_expiry_date: order?.product_expiry_date || '',
-        control_date: order?.control_date || today,
-        market_label_version: order?.market_label_version || '',
-        active_substances_match_pds: order?.active_substances_match_pds || 'Tak',
-        label_version_matches_used_version: order?.label_version_matches_used_version || 'Tak',
-        has_printing_errors: order?.has_printing_errors || 'Nie',
-        has_graphic_design_errors: order?.has_graphic_design_errors || 'Nie',
-        print_correctness: order?.print_correctness || 'Tak',
-        has_labeling_errors: order?.has_labeling_errors || 'Nie',
-        cap_is_correct: order?.cap_is_correct || 'Tak',
-        induction_seal_weld_correct: order?.induction_seal_weld_correct || 'Tak',
-        induction_seal_opening_correct: order?.induction_seal_opening_correct || 'Tak',
-        package_is_dirty: order?.package_is_dirty || 'Nie',
-        package_is_damaged: order?.package_is_damaged || 'Nie',
-        qr_code_is_active: order?.qr_code_is_active || 'Tak',
-        package_contents_match_card: order?.package_contents_match_card || 'Tak',
-        product_verified: order?.product_verified || 'Tak',
-        comment: order?.comment || '',
+        product_project_number: order?.product_project_number || order?.project_number || '',
+        product_ean_number: '',
+        product_batch_number: '',
+        product_expiry_date: '',
+        control_date: '',
+        market_label_version: '',
+        active_substances_match_pds: '',
+        active_substances_match_pds_note: '',
+        label_version_matches_used_version: '',
+        label_version_matches_used_version_note: '',
+        has_printing_errors: '',
+        has_printing_errors_note: '',
+        has_graphic_design_errors: '',
+        has_graphic_design_errors_note: '',
+        print_correctness: '',
+        print_correctness_note: '',
+        has_labeling_errors: '',
+        has_labeling_errors_note: '',
+        cap_is_correct: '',
+        cap_is_correct_note: '',
+        induction_seal_weld_correct: '',
+        induction_seal_weld_correct_note: '',
+        induction_seal_opening_correct: '',
+        induction_seal_opening_correct_note: '',
+        package_is_dirty: '',
+        package_is_dirty_note: '',
+        package_is_damaged: '',
+        package_is_damaged_note: '',
+        qr_code_is_active: '',
+        qr_code_is_active_note: '',
+        package_contents_match_card: '',
+        package_contents_match_card_note: '',
+        product_verified: '',
+        product_verified_note: '',
+        comment: '',
     };
 }
 
 function FormField({ label, required = false, children }) {
     return (
-        <label className="block">
-            <span className="mb-2 block text-sm font-medium text-slate-700">
+        <label className="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50/60 px-4 py-4 md:grid-cols-[minmax(280px,420px)_1fr] md:items-start">
+            <span className="text-sm font-medium text-slate-700">
                 {label}
                 {required ? ' *' : ''}
             </span>
-            {children}
+            <div>{children}</div>
         </label>
     );
 }
@@ -54,17 +163,20 @@ function FormField({ label, required = false, children }) {
 function SelectField({ label, value, onChange, options }) {
     return (
         <FormField label={label} required>
-            <select
-                value={value}
-                onChange={onChange}
-                className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-500"
-            >
+            <div className="flex flex-wrap gap-3 rounded-2xl border border-slate-300 bg-white px-4 py-3">
                 {options.map((option) => (
-                    <option key={option} value={option}>
-                        {option}
-                    </option>
+                    <label key={option} className="inline-flex cursor-pointer items-center gap-2 text-sm text-slate-900">
+                        <input
+                            type="radio"
+                            value={option}
+                            checked={value === option}
+                            onChange={onChange}
+                            className="h-4 w-4 border-slate-300 text-slate-900 focus:ring-slate-500"
+                        />
+                        <span>{option}</span>
+                    </label>
                 ))}
-            </select>
+            </div>
         </FormField>
     );
 }
@@ -113,6 +225,7 @@ function VariantProductBatchOrderedTestsPage({
     description = 'Dane pobierane z tabeli zleconych badań partii wariantów w bazie PostgreSQL.',
     enableFinishedProductControl = false,
     archiveMode = false,
+    viewMode = 'ordered_tests',
     finishedProductControlFilter = 'all',
     allowCreateFinishedProductControl = true,
 }) {
@@ -137,6 +250,14 @@ function VariantProductBatchOrderedTestsPage({
         saving: false,
         form: createInitialForm(),
     });
+    const [statusDecisionDialog, setStatusDecisionDialog] = useState({
+        open: false,
+        labelStatus: '',
+    });
+    const [commentPreviewDialog, setCommentPreviewDialog] = useState({
+        open: false,
+        row: null,
+    });
     const [selectedRowIds, setSelectedRowIds] = useState([]);
     const [coaDialog, setCoaDialog] = useState({
         open: false,
@@ -151,13 +272,21 @@ function VariantProductBatchOrderedTestsPage({
         files: Array(6).fill(null),
         previewIndex: null,
     });
+    const [moveDialog, setMoveDialog] = useState({
+        open: false,
+        saving: false,
+        targetStatus: 'archive',
+        note: '',
+    });
 
     const loadRows = async () => {
         const data = enableFinishedProductControl
             ? await variantProductsAPI.getFinishedProductControls()
             : archiveMode
                 ? await variantProductsAPI.getArchivedBatchTests()
-                : await variantProductsAPI.getOrderedBatchTests();
+                : viewMode === 'to_clarify'
+                    ? await variantProductsAPI.getClarificationBatchTests()
+                    : await variantProductsAPI.getOrderedBatchTests();
         return Array.isArray(data) ? data : [];
     };
 
@@ -181,7 +310,7 @@ function VariantProductBatchOrderedTestsPage({
         };
 
         fetchRows();
-    }, [archiveMode, enableFinishedProductControl]);
+    }, [archiveMode, enableFinishedProductControl, viewMode]);
 
     useEffect(() => {
         if (!contextMenu.visible) {
@@ -262,6 +391,10 @@ function VariantProductBatchOrderedTestsPage({
             form: createInitialForm(),
         });
         setDialogError('');
+        setStatusDecisionDialog({
+            open: false,
+            labelStatus: '',
+        });
     };
 
     const updateField = (field, value) => {
@@ -273,19 +406,97 @@ function VariantProductBatchOrderedTestsPage({
             },
         }));
     };
+    const isControlFormValid = () => {
+        const requiredFields = [
+            'printed_material_type',
+            'product_name',
+            'product_project_number',
+            'product_ean_number',
+            'product_batch_number',
+            'product_expiry_date',
+            'control_date',
+            'market_label_version',
+            ...CONTROL_QUESTION_FIELDS.map((field) => field.field),
+        ];
+
+        if (requiredFields.some((field) => !String(dialog.form[field] || '').trim())) {
+            return false;
+        }
+
+        return CONTROL_QUESTION_FIELDS.every(({ field, noteField }) => (
+            dialog.form[field] !== 'Nie' || String(dialog.form[noteField] || '').trim()
+        ));
+    };
 
     const handleSave = async () => {
+        setStatusDecisionDialog({
+            open: true,
+            labelStatus: '',
+        });
+    };
+
+    const closeStatusDecisionDialog = () => {
+        if (dialog.saving) {
+            return;
+        }
+
+        setStatusDecisionDialog({
+            open: false,
+            labelStatus: '',
+        });
+    };
+
+    const openCommentPreviewDialog = (row) => {
+        setCommentPreviewDialog({
+            open: true,
+            row,
+        });
+    };
+
+    const closeCommentPreviewDialog = () => {
+        setCommentPreviewDialog({
+            open: false,
+            row: null,
+        });
+    };
+
+    const openSelectedCommentPreviewDialog = () => {
+        if (selectedRowIds.length !== 1) {
+            return;
+        }
+
+        const selectedRow = rows.find((row) => row.id === selectedRowIds[0]);
+        if (!selectedRow) {
+            return;
+        }
+
+        openCommentPreviewDialog(selectedRow);
+    };
+
+    const handleConfirmSave = async () => {
         try {
             setDialog((prev) => ({ ...prev, saving: true }));
-            await variantProductsAPI.createFinishedProductControl(dialog.form);
-            setRows(await loadRows());
-            setSuccess(`Zapisano kontrolę produktu gotowego dla ${dialog.form.sku}, seria: ${dialog.form.product_batch_number}.`);
+            const savedControl = await variantProductsAPI.createFinishedProductControl({
+                ...dialog.form,
+                label_status: statusDecisionDialog.labelStatus,
+            });
+            if (enableFinishedProductControl && finishedProductControlFilter === 'current') {
+                setRows((current) => current.filter((row) => row.id !== savedControl.id));
+            } else {
+                setRows(await loadRows());
+            }
+            setSelectedRowIds([]);
+            setSuccess(`Zapisano kontrolę produktu gotowego dla ${dialog.form.sku} i przeniesiono do zakładki ${statusDecisionDialog.labelStatus === 'incorrect' ? 'Błędne' : 'Poprawne'}.`);
             setError('');
             setDialogError('');
             setDialog({
                 open: false,
                 saving: false,
                 form: createInitialForm(),
+            });
+            setStatusDecisionDialog({
+                open: false,
+                labelStatus: '',
             });
         } catch (err) {
             setDialogError(err?.response?.data?.detail || err.message || 'Nie udało się zapisać kontroli produktu gotowego.');
@@ -306,11 +517,17 @@ function VariantProductBatchOrderedTestsPage({
 
     const filteredRows = rows.filter((row) => {
         if (enableFinishedProductControl) {
-            if (finishedProductControlFilter === 'correct' && hasFinishedProductControlIssues(row)) {
+            const labelStatus = row.label_status || 'current';
+
+            if (finishedProductControlFilter === 'current' && labelStatus !== 'current') {
                 return false;
             }
 
-            if (finishedProductControlFilter === 'incorrect' && !hasFinishedProductControlIssues(row)) {
+            if (finishedProductControlFilter === 'correct' && labelStatus !== 'correct') {
+                return false;
+            }
+
+            if (finishedProductControlFilter === 'incorrect' && labelStatus !== 'incorrect') {
                 return false;
             }
         }
@@ -344,14 +561,22 @@ function VariantProductBatchOrderedTestsPage({
     const displayCount = filteredRows.length;
 
     const toggleRowSelection = (rowId) => {
-        setSelectedRowIds((current) =>
-            current.includes(rowId)
+        setSelectedRowIds((current) => {
+            if (enableFinishedProductControl) {
+                return current.includes(rowId) ? [] : [rowId];
+            }
+
+            return current.includes(rowId)
                 ? current.filter((id) => id !== rowId)
-                : [...current, rowId]
-        );
+                : [...current, rowId];
+        });
     };
 
     const toggleAllVisibleRows = () => {
+        if (enableFinishedProductControl) {
+            return;
+        }
+
         setSelectedRowIds((current) =>
             allVisibleSelected
                 ? current.filter((id) => !visibleRowIds.includes(id))
@@ -359,16 +584,57 @@ function VariantProductBatchOrderedTestsPage({
         );
     };
 
-    const handleArchiveSelected = async () => {
+    const openMoveDialog = () => {
+        setMoveDialog({
+            open: true,
+            saving: false,
+            targetStatus: viewMode === 'to_clarify' ? 'ordered_tests' : 'archive',
+            note: '',
+        });
+    };
+
+    const closeMoveDialog = () => {
+        if (moveDialog.saving) {
+            return;
+        }
+
+        setMoveDialog({
+            open: false,
+            saving: false,
+            targetStatus: viewMode === 'to_clarify' ? 'ordered_tests' : 'archive',
+            note: '',
+        });
+    };
+
+    const handleMoveSelected = async () => {
         try {
-            await variantProductsAPI.archiveBatchTests(selectedRowIds);
-            const updatedRows = await variantProductsAPI.getOrderedBatchTests();
-            setRows(Array.isArray(updatedRows) ? updatedRows : []);
+            setMoveDialog((current) => ({ ...current, saving: true }));
+            if (moveDialog.targetStatus === 'archive') {
+                await variantProductsAPI.archiveBatchTests(selectedRowIds);
+            } else {
+                await Promise.all(
+                    selectedRowIds.map((id) =>
+                        variantProductsAPI.updateBatchTest(id, {
+                            workflow_status: moveDialog.targetStatus,
+                            clarification_note: moveDialog.targetStatus === 'to_clarify' ? moveDialog.note : '',
+                        })
+                    )
+                );
+            }
+            setRows(await loadRows());
             setSelectedRowIds([]);
-            setSuccess(`Przeniesiono do archiwum ${selectedRowIds.length} pozycji.`);
+            setSuccess(
+                moveDialog.targetStatus === 'to_clarify'
+                    ? `Przeniesiono ${selectedRowIds.length} pozycji do zakładki Do wyjaśnienia.`
+                    : moveDialog.targetStatus === 'ordered_tests'
+                        ? `Przeniesiono ${selectedRowIds.length} pozycji do zakładki Badania zlecone.`
+                        : `Przeniesiono ${selectedRowIds.length} pozycji do zakładki Badania ukończone.`
+            );
             setError('');
+            closeMoveDialog();
         } catch (err) {
-            setError(err?.response?.data?.detail || err.message || 'Nie udało się przenieść pozycji do archiwum.');
+            setError(err?.response?.data?.detail || err.message || 'Nie udało się przenieść pozycji.');
+            setMoveDialog((current) => ({ ...current, saving: false }));
         }
     };
 
@@ -523,6 +789,16 @@ function VariantProductBatchOrderedTestsPage({
     const previewDocument = documentsDialog.previewIndex !== null
         ? documentsDialog.files[documentsDialog.previewIndex]
         : null;
+    const showClarificationColumn = !enableFinishedProductControl && viewMode === 'to_clarify';
+    const moveOptions = viewMode === 'to_clarify'
+        ? [
+            { value: 'ordered_tests', label: 'Badania zlecone' },
+            { value: 'archive', label: 'Badania ukończone' },
+        ]
+        : [
+            { value: 'to_clarify', label: 'Do wyjaśnienia' },
+            { value: 'archive', label: 'Badania ukończone' },
+        ];
 
     return (
         <div className="w-full">
@@ -531,30 +807,29 @@ function VariantProductBatchOrderedTestsPage({
                     <h1 className="text-3xl font-semibold text-slate-900">{title}</h1>
                     <p className="mt-2 text-sm text-slate-600">{description}</p>
                 </div>
-                <div className="flex items-center gap-3">
-                    {enableFinishedProductControl && allowCreateFinishedProductControl && (
-                        <button
-                            type="button"
-                            onClick={openPicker}
-                            className="rounded-2xl bg-slate-900 px-5 py-3 text-sm font-medium text-white transition hover:bg-slate-800"
-                        >
-                            Dodaj kontrolę
-                        </button>
-                    )}
-                    <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600 shadow-sm">
+                <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600 shadow-sm">
                         Pozycji: <span className="font-semibold text-slate-900">{displayCount}</span>
-                    </div>
                 </div>
             </div>
 
             <div className="mb-4 flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600 shadow-sm">
                 <span>Zaznaczone: <span className="font-semibold text-slate-900">{selectedRowIds.length}</span></span>
                 <div className="flex items-center gap-2">
+                    {enableFinishedProductControl && allowCreateFinishedProductControl && (
+                        <button
+                            type="button"
+                            onClick={() => openDialog(selectedRowIds.length === 1 ? rows.find((row) => row.id === selectedRowIds[0]) : null)}
+                            className="rounded-2xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                            disabled={selectedRowIds.length !== 1}
+                        >
+                            Dodaj kontrolę
+                        </button>
+                    )}
                     {!enableFinishedProductControl && !archiveMode && (
                         <button
                             type="button"
                             onClick={handleGenerateCoA}
-                            className="rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                            className="rounded-2xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
                             disabled={selectedRowIds.length === 0}
                         >
                             Generuj CoA
@@ -564,7 +839,7 @@ function VariantProductBatchOrderedTestsPage({
                         <button
                             type="button"
                             onClick={openDocumentsDialog}
-                            className="rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                            className="rounded-2xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
                             disabled={selectedRowIds.length === 0}
                         >
                             Dodaj dokumenty
@@ -573,17 +848,27 @@ function VariantProductBatchOrderedTestsPage({
                     {!enableFinishedProductControl && !archiveMode && (
                         <button
                             type="button"
-                            onClick={handleArchiveSelected}
-                            className="rounded-xl bg-slate-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                            onClick={openMoveDialog}
+                            className="rounded-2xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
                             disabled={selectedRowIds.length === 0}
                         >
-                            Przenieś do archiwum
+                            Przenieś
+                        </button>
+                    )}
+                    {enableFinishedProductControl && finishedProductControlFilter === 'incorrect' && (
+                        <button
+                            type="button"
+                            onClick={openSelectedCommentPreviewDialog}
+                            className="rounded-2xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                            disabled={selectedRowIds.length !== 1}
+                        >
+                            Pokaż komentarz
                         </button>
                     )}
                     <button
                         type="button"
                         onClick={() => setSelectedRowIds([])}
-                        className="rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                        className="rounded-2xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
                         disabled={selectedRowIds.length === 0}
                     >
                         Wyczyść zaznaczenie
@@ -624,23 +909,27 @@ function VariantProductBatchOrderedTestsPage({
                             {enableFinishedProductControl ? (
                                 <tr>
                                     <th className="px-6 py-4">
-                                        <input
-                                            type="checkbox"
-                                            checked={allVisibleSelected}
-                                            onChange={toggleAllVisibleRows}
-                                            aria-label="Zaznacz wszystkie widoczne wiersze"
-                                        />
+                                        {enableFinishedProductControl ? null : (
+                                            <input
+                                                type="checkbox"
+                                                checked={allVisibleSelected}
+                                                onChange={toggleAllVisibleRows}
+                                                aria-label="Zaznacz wszystkie widoczne wiersze"
+                                            />
+                                        )}
                                     </th>
                                     <th className="px-6 py-4">Numer projektu</th>
                                     <th className="px-6 py-4">Numer wariantu</th>
                                     <th className="w-[22rem] min-w-[22rem] px-6 py-4">Nazwa</th>
                                     <th className="px-6 py-4">EAN</th>
+                                    <th className="px-6 py-4">Numer w Asana</th>
                                     <th className="px-6 py-4">Materiał</th>
                                     <th className="px-6 py-4">Nr projektowy</th>
                                     <th className="px-6 py-4">Nr serii</th>
                                     <th className="px-6 py-4">Data ważności</th>
                                     <th className="px-6 py-4">Data</th>
                                     <th className="px-6 py-4">Wersja rynku</th>
+                                    <th className="px-6 py-4">Status etykiety</th>
                                     <th className="px-6 py-4">Zweryfikowano</th>
                                 </tr>
                             ) : (
@@ -657,7 +946,13 @@ function VariantProductBatchOrderedTestsPage({
                                     <th className="px-6 py-4">Numer wariantu</th>
                                     <th className="w-[22rem] min-w-[22rem] px-6 py-4">Nazwa</th>
                                     <th className="px-6 py-4">EAN</th>
+                                    <th className="px-6 py-4">Numer w Asana</th>
                                     <th className="px-6 py-4">Numer serii</th>
+                                    <th className="px-6 py-4">Status badań</th>
+                                    <th className="px-6 py-4">Status etykiety</th>
+                                    <th className="px-6 py-4">Data produkcji</th>
+                                    <th className="px-6 py-4">Data ważności</th>
+                                    <th className="px-6 py-4">Plan. realizacji</th>
                                     <th className="px-6 py-4">Data dodania serii</th>
                                     <th className="px-6 py-4">Data zlecenia</th>
                                     <th className="px-6 py-4">Laboratorium</th>
@@ -666,7 +961,7 @@ function VariantProductBatchOrderedTestsPage({
                                     <th className="px-6 py-4">Nr projektowy</th>
                                     <th className="px-6 py-4">EAN produktu</th>
                                     <th className="px-6 py-4">Seria produktu</th>
-                                    <th className="px-6 py-4">Data ważności</th>
+                                    <th className="px-6 py-4">Data ważności produktu</th>
                                     <th className="px-6 py-4">Data kontroli</th>
                                     <th className="px-6 py-4">Wersja rynku</th>
                                     <th className="px-6 py-4">Substancje vs PDS</th>
@@ -684,19 +979,20 @@ function VariantProductBatchOrderedTestsPage({
                                     <th className="px-6 py-4">Zawartość zgodna</th>
                                     <th className="px-6 py-4">Zweryfikowano</th>
                                     <th className="px-6 py-4">Komentarz</th>
+                                    {showClarificationColumn && <th className="px-6 py-4">Notatka</th>}
                                 </tr>
                             )}
                         </thead>
                         <tbody>
                             {loading ? (
                                 <tr className="border-t border-slate-100">
-                                    <td colSpan={enableFinishedProductControl ? 12 : 32} className="px-6 py-10 text-center text-slate-500">
+                                    <td colSpan={enableFinishedProductControl ? 14 : showClarificationColumn ? 39 : 38} className="px-6 py-10 text-center text-slate-500">
                                         {enableFinishedProductControl ? 'Ładowanie kontroli produktu gotowego...' : 'Ładowanie zleconych badań partii...'}
                                     </td>
                                 </tr>
                             ) : filteredRows.length === 0 ? (
                                 <tr className="border-t border-slate-100">
-                                    <td colSpan={enableFinishedProductControl ? 12 : 32} className="px-6 py-10 text-center text-slate-500">
+                                    <td colSpan={enableFinishedProductControl ? 14 : showClarificationColumn ? 39 : 38} className="px-6 py-10 text-center text-slate-500">
                                         Brak wyników dla podanego wyszukiwania.
                                     </td>
                                 </tr>
@@ -726,19 +1022,35 @@ function VariantProductBatchOrderedTestsPage({
                                             <>
                                                 <td className="w-[22rem] min-w-[22rem] px-6 py-4"><TwoLineNameCell>{row.name}</TwoLineNameCell></td>
                                                 <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.ean}</td>
+                                                <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.asana_task_number || '—'}</td>
                                                 <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.printed_material_type}</td>
                                                 <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.product_project_number}</td>
                                                 <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.product_batch_number}</td>
                                                 <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.product_expiry_date}</td>
                                                 <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.control_date}</td>
                                                 <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.market_label_version}</td>
+                                                <td className="whitespace-nowrap px-6 py-4 text-slate-700">{LABEL_STATUS_META[row.label_status || 'current']?.label || '—'}</td>
                                                 <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.product_verified}</td>
                                             </>
                                         ) : (
                                             <>
                                                 <td className="w-[22rem] min-w-[22rem] px-6 py-4"><TwoLineNameCell>{row.name}</TwoLineNameCell></td>
                                                 <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.ean}</td>
+                                                <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.asana_task_number || '—'}</td>
                                                 <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.batch_number}</td>
+                                                <td className="px-6 py-4 text-slate-700">
+                                                    <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${(TEST_STATUS_META[row.workflow_status || 'ordered_tests'] || TEST_STATUS_META.ordered_tests).className}`}>
+                                                        {(TEST_STATUS_META[row.workflow_status || 'ordered_tests'] || TEST_STATUS_META.ordered_tests).label}
+                                                    </span>
+                                                </td>
+                                                <td className="px-6 py-4 text-slate-700">
+                                                    <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${(LABEL_STATUS_META[row.label_status || 'current'] || LABEL_STATUS_META.current).className}`}>
+                                                        {(LABEL_STATUS_META[row.label_status || 'current'] || LABEL_STATUS_META.current).label}
+                                                    </span>
+                                                </td>
+                                                <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.production_date || '—'}</td>
+                                                <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.expiry_date || '—'}</td>
+                                                <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.planned_test_date || '—'}</td>
                                                 <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.batch_added_at ? new Date(row.batch_added_at).toLocaleString('pl-PL') : '—'}</td>
                                                 <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.ordered_at ? new Date(row.ordered_at).toLocaleString('pl-PL') : '—'}</td>
                                                 <td className="px-6 py-4 text-slate-700">{row.laboratory_name || '—'}</td>
@@ -765,6 +1077,7 @@ function VariantProductBatchOrderedTestsPage({
                                                 <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.package_contents_match_card || '—'}</td>
                                                 <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.product_verified || '—'}</td>
                                                 <td className="px-6 py-4 text-slate-700">{row.comment || '—'}</td>
+                                                {showClarificationColumn && <td className="px-6 py-4 text-slate-700">{row.clarification_note || '—'}</td>}
                                             </>
                                         )}
                                     </tr>
@@ -860,21 +1173,22 @@ function VariantProductBatchOrderedTestsPage({
 
             {dialog.open && (
                 <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/40 p-4 md:p-8">
-                    <div className="w-full max-w-5xl rounded-3xl bg-white shadow-2xl">
+                    <div className="flex max-h-[calc(100vh-48px)] w-full max-w-5xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl">
                         <div className="border-b border-slate-200 px-6 py-5">
                             <h2 className="text-xl font-semibold text-slate-900">Kontrola produktu gotowego</h2>
                             <p className="mt-1 text-sm text-slate-600">
                                 Wariant: {dialog.form.sku} | {dialog.form.name}
                             </p>
                         </div>
-                        <div className="grid gap-4 px-6 py-6 md:grid-cols-2">
-                            <SelectField label="Rodzaj materiału zadrukowanego" value={dialog.form.printed_material_type} onChange={(event) => updateField('printed_material_type', event.target.value)} options={MATERIAL_TYPES} />
+                        <div className="flex-1 overflow-y-auto px-6 py-6">
+                            <div className="grid gap-4">
                             <FormField label="Nazwa produktu" required>
                                 <input type="text" value={dialog.form.product_name} onChange={(event) => updateField('product_name', event.target.value)} className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-500" />
                             </FormField>
                             <FormField label="Numer projektowy produktu" required>
                                 <input type="text" value={dialog.form.product_project_number} onChange={(event) => updateField('product_project_number', event.target.value)} className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-500" />
                             </FormField>
+                            <SelectField label="Rodzaj materiału zadrukowanego" value={dialog.form.printed_material_type} onChange={(event) => updateField('printed_material_type', event.target.value)} options={MATERIAL_TYPES} />
                             <FormField label="Numer EAN produktu" required>
                                 <input type="text" value={dialog.form.product_ean_number} onChange={(event) => updateField('product_ean_number', event.target.value)} className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-500" />
                             </FormField>
@@ -890,39 +1204,136 @@ function VariantProductBatchOrderedTestsPage({
                             <FormField label="Numer wersji etykiety / kartonika obecny na rynku" required>
                                 <input type="text" value={dialog.form.market_label_version} onChange={(event) => updateField('market_label_version', event.target.value)} className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-500" />
                             </FormField>
-                            <SelectField label="Czy zawartość substancji aktywnych na etykiecie jest zgodna ze specyfikacją analityczną w PDS?" value={dialog.form.active_substances_match_pds} onChange={(event) => updateField('active_substances_match_pds', event.target.value)} options={YES_NO_NA} />
-                            <SelectField label="Aktualna wersja etykiety/kartonika jest zgodna z użytą wersją etykiety/kartonika" value={dialog.form.label_version_matches_used_version} onChange={(event) => updateField('label_version_matches_used_version', event.target.value)} options={YES_NO} />
-                            <SelectField label="Czy na opakowaniu znajdują się błędy drukarskie? (np. pogrubienie)" value={dialog.form.has_printing_errors} onChange={(event) => updateField('has_printing_errors', event.target.value)} options={YES_NO} />
-                            <SelectField label="Czy na opakowaniu znajdują się błędy w projekcie graficznym?" value={dialog.form.has_graphic_design_errors} onChange={(event) => updateField('has_graphic_design_errors', event.target.value)} options={YES_NO} />
-                            <SelectField label="Poprawność nadruku (TP/partia; np. ścieranie się)" value={dialog.form.print_correctness} onChange={(event) => updateField('print_correctness', event.target.value)} options={YES_NO} />
-                            <SelectField label="Czy opakowanie posiada błędy w sposobie oklejenia (krzywa etykieta, zagięcia, ślady kleju)?" value={dialog.form.has_labeling_errors} onChange={(event) => updateField('has_labeling_errors', event.target.value)} options={YES_NO} />
-                            <SelectField label="Nakrętka: czy jest prawidłowa (np. bez marmurku)" value={dialog.form.cap_is_correct} onChange={(event) => updateField('cap_is_correct', event.target.value)} options={YES_NO_NA} />
-                            <SelectField label="Wkładka indukcyjna: poprawność zgrzewu" value={dialog.form.induction_seal_weld_correct} onChange={(event) => updateField('induction_seal_weld_correct', event.target.value)} options={YES_NO_NA} />
-                            <SelectField label="Wkładka indukcyjna: poprawność otwierania" value={dialog.form.induction_seal_opening_correct} onChange={(event) => updateField('induction_seal_opening_correct', event.target.value)} options={YES_NO_NA} />
-                            <SelectField label="Czy opakowanie jest zabrudzone?" value={dialog.form.package_is_dirty} onChange={(event) => updateField('package_is_dirty', event.target.value)} options={YES_NO} />
-                            <SelectField label="Czy opakowanie jest uszkodzone (np. wgniecenie, pęknięcie)" value={dialog.form.package_is_damaged} onChange={(event) => updateField('package_is_damaged', event.target.value)} options={YES_NO} />
-                            <SelectField label="Czy kod QR jest aktywny?" value={dialog.form.qr_code_is_active} onChange={(event) => updateField('qr_code_is_active', event.target.value)} options={YES_NO_NA} />
-                            <SelectField label="Zawartość opakowania zgodna z Kartą Produktu (w tym miarka przy proszkach)" value={dialog.form.package_contents_match_card} onChange={(event) => updateField('package_contents_match_card', event.target.value)} options={YES_NO} />
-                            <SelectField label="Poprawność produktu została zweryfikowana" value={dialog.form.product_verified} onChange={(event) => updateField('product_verified', event.target.value)} options={YES_NO} />
-                            <div className="md:col-span-2">
-                                <FormField label="Komentarz">
-                                    <textarea value={dialog.form.comment} onChange={(event) => updateField('comment', event.target.value)} rows={4} className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-500" />
+                            {CONTROL_QUESTION_FIELDS.map(({ field, noteField, label, options }) => (
+                                <FormField key={field} label={label} required>
+                                    <div className="space-y-3">
+                                        <div className="flex flex-wrap gap-3 rounded-2xl border border-slate-300 bg-white px-4 py-3">
+                                            {options.map((option) => (
+                                                <label key={option} className="inline-flex cursor-pointer items-center gap-2 text-sm text-slate-900">
+                                                    <input
+                                                        type="radio"
+                                                        value={option}
+                                                        checked={dialog.form[field] === option}
+                                                        onChange={(event) => updateField(field, event.target.value)}
+                                                        className="h-4 w-4 border-slate-300 text-slate-900 focus:ring-slate-500"
+                                                    />
+                                                    <span>{option}</span>
+                                                </label>
+                                            ))}
+                                        </div>
+                                        {dialog.form[field] === 'Nie' && (
+                                            <textarea
+                                                value={dialog.form[noteField]}
+                                                onChange={(event) => updateField(noteField, event.target.value)}
+                                                rows={3}
+                                                placeholder="Wpisz uwagi"
+                                                className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-500"
+                                            />
+                                        )}
+                                    </div>
                                 </FormField>
+                            ))}
+                            <FormField label="Komentarz">
+                                <textarea value={dialog.form.comment} onChange={(event) => updateField('comment', event.target.value)} rows={4} className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-500" />
+                            </FormField>
                             </div>
                         </div>
                         {dialogError && (
-                            <div className="px-6 pb-2">
+                            <div className="border-t border-slate-200 px-6 py-4">
                                 <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
                                     {dialogError}
                                 </div>
                             </div>
                         )}
-                        <div className="flex justify-end gap-3 border-t border-slate-200 px-6 py-5">
+                        <div className="sticky bottom-0 flex justify-end gap-3 border-t border-slate-200 bg-white px-6 py-5">
                             <button type="button" onClick={closeDialog} disabled={dialog.saving} className="rounded-2xl border border-slate-300 px-5 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50">
                                 Anuluj
                             </button>
-                            <button type="button" onClick={handleSave} disabled={dialog.saving} className="rounded-2xl bg-slate-900 px-5 py-3 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50">
+                            <button
+                                type="button"
+                                onClick={handleSave}
+                                disabled={dialog.saving || !isControlFormValid()}
+                                className="rounded-2xl bg-slate-900 px-5 py-3 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
                                 {dialog.saving ? 'Zapisywanie...' : 'Zapisz'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {statusDecisionDialog.open && (
+                <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/35 p-4">
+                    <div className="w-full max-w-lg rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl">
+                        <div className="mb-6">
+                            <h2 className="text-2xl font-semibold text-slate-900">Przenieś po zapisie</h2>
+                            <p className="mt-2 text-sm text-slate-600">
+                                Wybierz docelowy status etykiety dla zapisywanej kontroli.
+                            </p>
+                        </div>
+                        <div className="space-y-3">
+                            <label className="flex cursor-pointer items-center gap-3 rounded-2xl border border-slate-300 px-4 py-3 text-sm text-slate-900">
+                                <input
+                                    type="radio"
+                                    value="incorrect"
+                                    checked={statusDecisionDialog.labelStatus === 'incorrect'}
+                                    onChange={(event) => setStatusDecisionDialog((current) => ({ ...current, labelStatus: event.target.value }))}
+                                    className="h-4 w-4 border-slate-300 text-slate-900 focus:ring-slate-500"
+                                />
+                                <span>Błędne</span>
+                            </label>
+                            <label className="flex cursor-pointer items-center gap-3 rounded-2xl border border-slate-300 px-4 py-3 text-sm text-slate-900">
+                                <input
+                                    type="radio"
+                                    value="correct"
+                                    checked={statusDecisionDialog.labelStatus === 'correct'}
+                                    onChange={(event) => setStatusDecisionDialog((current) => ({ ...current, labelStatus: event.target.value }))}
+                                    className="h-4 w-4 border-slate-300 text-slate-900 focus:ring-slate-500"
+                                />
+                                <span>Poprawne</span>
+                            </label>
+                        </div>
+                        <div className="mt-6 flex justify-end gap-3">
+                            <button
+                                type="button"
+                                onClick={closeStatusDecisionDialog}
+                                disabled={dialog.saving}
+                                className="rounded-2xl border border-slate-300 px-5 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                                Anuluj
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleConfirmSave}
+                                disabled={dialog.saving || !statusDecisionDialog.labelStatus}
+                                className="rounded-2xl bg-slate-900 px-5 py-3 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                                {dialog.saving ? 'Zapisywanie...' : 'Zapisz'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {commentPreviewDialog.open && (
+                <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/35 p-4">
+                    <div className="w-full max-w-3xl rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl">
+                        <div className="mb-6">
+                            <h2 className="text-2xl font-semibold text-slate-900">Komentarz</h2>
+                            <p className="mt-2 text-sm text-slate-600">
+                                {commentPreviewDialog.row?.sku} / {commentPreviewDialog.row?.name}
+                            </p>
+                        </div>
+                        <div className="max-h-[60vh] overflow-y-auto whitespace-pre-wrap rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm leading-6 text-slate-700">
+                            {commentPreviewDialog.row?.comment || 'Brak komentarza.'}
+                        </div>
+                        <div className="mt-6 flex justify-end">
+                            <button
+                                type="button"
+                                onClick={closeCommentPreviewDialog}
+                                className="rounded-2xl border border-slate-300 px-5 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                            >
+                                Zamknij
                             </button>
                         </div>
                     </div>
@@ -1138,6 +1549,69 @@ function VariantProductBatchOrderedTestsPage({
                                 className="rounded-2xl bg-slate-900 px-5 py-3 text-sm font-medium text-white transition hover:bg-slate-800"
                             >
                                 Zapisz
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {moveDialog.open && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/35 p-4">
+                    <div className="w-full max-w-xl rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl">
+                        <div className="mb-6">
+                            <h2 className="text-2xl font-semibold text-slate-900">Przenieś</h2>
+                            <p className="mt-2 text-sm text-slate-600">
+                                Zaznaczone pozycje: {selectedRowIds.length}
+                            </p>
+                        </div>
+                        <div className="mb-6">
+                            <label className="block text-xs font-semibold uppercase tracking-[0.18em] text-slate-500" htmlFor="variant-move-target-status">
+                                Status docelowy
+                            </label>
+                            <select
+                                id="variant-move-target-status"
+                                value={moveDialog.targetStatus}
+                                onChange={(event) => setMoveDialog((current) => ({ ...current, targetStatus: event.target.value }))}
+                                className="mt-3 w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-500 focus:bg-white"
+                            >
+                                {moveOptions.map((option) => (
+                                    <option key={option.value} value={option.value}>
+                                        {option.label}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                        {moveDialog.targetStatus === 'to_clarify' && (
+                            <div className="mb-6">
+                                <label className="block text-xs font-semibold uppercase tracking-[0.18em] text-slate-500" htmlFor="variant-clarification-note">
+                                    Notatka
+                                </label>
+                                <textarea
+                                    id="variant-clarification-note"
+                                    value={moveDialog.note}
+                                    onChange={(event) => setMoveDialog((current) => ({ ...current, note: event.target.value }))}
+                                    rows={5}
+                                    placeholder="Wprowadź notatkę do wyjaśnienia"
+                                    className="mt-3 w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-500 focus:bg-white"
+                                />
+                            </div>
+                        )}
+                        <div className="flex justify-end gap-3">
+                            <button
+                                type="button"
+                                onClick={closeMoveDialog}
+                                className="rounded-2xl border border-slate-300 px-5 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                                disabled={moveDialog.saving}
+                            >
+                                Anuluj
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleMoveSelected}
+                                disabled={moveDialog.saving || (moveDialog.targetStatus === 'to_clarify' && !moveDialog.note.trim())}
+                                className="rounded-2xl bg-slate-900 px-5 py-3 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                                {moveDialog.saving ? 'Przenoszenie...' : 'Przenieś'}
                             </button>
                         </div>
                     </div>

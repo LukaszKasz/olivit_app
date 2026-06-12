@@ -6,36 +6,34 @@ const YES_NO = ['Tak', 'Nie'];
 const YES_NO_NA = ['Tak', 'Nie', 'Nie dotyczy'];
 
 function createInitialForm(order = null) {
-    const today = new Date().toISOString().slice(0, 10);
-
     return {
         ordered_test_id: order?.id || null,
         sku: order?.sku || '',
         name: order?.name || '',
         ean: order?.ean || '',
-        printed_material_type: 'Etykieta+opakowanie',
+        printed_material_type: '',
         product_name: order?.product_name || order?.name || '',
-        product_project_number: order?.product_project_number || '',
-        product_ean_number: order?.product_ean_number || order?.ean || '',
-        product_batch_number: order?.product_batch_number || order?.batch_number || '',
-        product_expiry_date: order?.product_expiry_date || '',
-        control_date: order?.control_date || today,
-        market_label_version: order?.market_label_version || '',
-        active_substances_match_pds: order?.active_substances_match_pds || 'Tak',
-        label_version_matches_used_version: order?.label_version_matches_used_version || 'Tak',
-        has_printing_errors: order?.has_printing_errors || 'Nie',
-        has_graphic_design_errors: order?.has_graphic_design_errors || 'Nie',
-        print_correctness: order?.print_correctness || 'Tak',
-        has_labeling_errors: order?.has_labeling_errors || 'Nie',
-        cap_is_correct: order?.cap_is_correct || 'Tak',
-        induction_seal_weld_correct: order?.induction_seal_weld_correct || 'Tak',
-        induction_seal_opening_correct: order?.induction_seal_opening_correct || 'Tak',
-        package_is_dirty: order?.package_is_dirty || 'Nie',
-        package_is_damaged: order?.package_is_damaged || 'Nie',
-        qr_code_is_active: order?.qr_code_is_active || 'Tak',
-        package_contents_match_card: order?.package_contents_match_card || 'Tak',
-        product_verified: order?.product_verified || 'Tak',
-        comment: order?.comment || '',
+        product_project_number: order?.product_project_number || order?.project_number || '',
+        product_ean_number: '',
+        product_batch_number: '',
+        product_expiry_date: '',
+        control_date: '',
+        market_label_version: '',
+        active_substances_match_pds: '',
+        label_version_matches_used_version: '',
+        has_printing_errors: '',
+        has_graphic_design_errors: '',
+        print_correctness: '',
+        has_labeling_errors: '',
+        cap_is_correct: '',
+        induction_seal_weld_correct: '',
+        induction_seal_opening_correct: '',
+        package_is_dirty: '',
+        package_is_damaged: '',
+        qr_code_is_active: '',
+        package_contents_match_card: '',
+        product_verified: '',
+        comment: '',
     };
 }
 
@@ -225,7 +223,7 @@ function VariantProductFinishedProductControlPage() {
                     <button
                         type="button"
                         onClick={() => openDialog(selectedRow)}
-                        className="rounded-xl bg-slate-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                        className="rounded-2xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
                         disabled={!selectedRow}
                     >
                         Wypełnij formularz
@@ -233,7 +231,7 @@ function VariantProductFinishedProductControlPage() {
                     <button
                         type="button"
                         onClick={() => setSelectedRowIds([])}
-                        className="rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                        className="rounded-2xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
                         disabled={selectedRowIds.length === 0}
                     >
                         Wyczyść zaznaczenie
@@ -284,6 +282,7 @@ function VariantProductFinishedProductControlPage() {
                                 <th className="px-6 py-4">Numer wariantu</th>
                                 <th className="w-[22rem] min-w-[22rem] px-6 py-4">Nazwa</th>
                                 <th className="px-6 py-4">EAN</th>
+                                <th className="px-6 py-4">Numer w Asana</th>
                                 <th className="px-6 py-4">Numer serii</th>
                                 <th className="px-6 py-4">Data dodania serii</th>
                                 <th className="px-6 py-4">Data zlecenia</th>
@@ -309,6 +308,7 @@ function VariantProductFinishedProductControlPage() {
                                 <th className="px-6 py-4">Uszkodzenie</th>
                                 <th className="px-6 py-4">Kod QR</th>
                                 <th className="px-6 py-4">Zawartość zgodna</th>
+                                <th className="px-6 py-4">Status etykiety</th>
                                 <th className="px-6 py-4">Zweryfikowano</th>
                                 <th className="px-6 py-4">Komentarz</th>
                             </tr>
@@ -316,13 +316,13 @@ function VariantProductFinishedProductControlPage() {
                         <tbody>
                             {loading ? (
                                 <tr className="border-t border-slate-100">
-                                    <td colSpan="32" className="px-6 py-10 text-center text-slate-500">
+                                    <td colSpan="34" className="px-6 py-10 text-center text-slate-500">
                                         Ładowanie zleconych badań partii...
                                     </td>
                                 </tr>
                             ) : filteredRows.length === 0 ? (
                                 <tr className="border-t border-slate-100">
-                                    <td colSpan="32" className="px-6 py-10 text-center text-slate-500">
+                                    <td colSpan="34" className="px-6 py-10 text-center text-slate-500">
                                         Brak wyników dla podanego wyszukiwania.
                                     </td>
                                 </tr>
@@ -345,6 +345,7 @@ function VariantProductFinishedProductControlPage() {
                                         <td className="whitespace-nowrap px-6 py-4 font-semibold text-slate-900">{row.sku}</td>
                                         <td className="w-[22rem] min-w-[22rem] px-6 py-4"><TwoLineNameCell>{row.name}</TwoLineNameCell></td>
                                         <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.ean}</td>
+                                        <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.asana_task_number || '—'}</td>
                                         <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.batch_number}</td>
                                         <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.batch_added_at ? new Date(row.batch_added_at).toLocaleString('pl-PL') : '—'}</td>
                                         <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.ordered_at ? new Date(row.ordered_at).toLocaleString('pl-PL') : '—'}</td>
@@ -370,6 +371,7 @@ function VariantProductFinishedProductControlPage() {
                                         <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.package_is_damaged || '—'}</td>
                                         <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.qr_code_is_active || '—'}</td>
                                         <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.package_contents_match_card || '—'}</td>
+                                        <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.label_status || '—'}</td>
                                         <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.product_verified || '—'}</td>
                                         <td className="px-6 py-4 text-slate-700">{row.comment || '—'}</td>
                                     </tr>

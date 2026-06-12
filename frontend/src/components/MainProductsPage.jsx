@@ -7,6 +7,19 @@ function MainProductsPage({
     title = 'Bulk / Baza produktów',
     description = 'Lista produktów głównych dostępnych w bazie.',
 }) {
+    const getInitialOrderDialog = () => ({
+        open: false,
+        mode: 'test-order',
+        laboratory: '',
+        product: null,
+        batchNumber: '',
+        asanaTaskNumber: '',
+        productionDate: '',
+        expiryDate: '',
+        plannedTestDate: '',
+        saving: false,
+    });
+
     const [query, setQuery] = useState('');
     const [products, setProducts] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -19,14 +32,7 @@ function MainProductsPage({
         submenuOpen: false,
     });
     const [success, setSuccess] = useState('');
-    const [orderDialog, setOrderDialog] = useState({
-        open: false,
-        mode: 'test-order',
-        laboratory: '',
-        product: null,
-        batchNumber: '',
-        saving: false,
-    });
+    const [orderDialog, setOrderDialog] = useState(getInitialOrderDialog);
     const [detailsDialog, setDetailsDialog] = useState({
         open: false,
         loading: false,
@@ -96,12 +102,11 @@ function MainProductsPage({
         }
 
         setOrderDialog({
+            ...getInitialOrderDialog(),
             open: true,
             mode: 'test-order',
             laboratory,
             product,
-            batchNumber: '',
-            saving: false,
         });
         setContextMenu((prev) => ({ ...prev, visible: false, submenuOpen: false }));
     };
@@ -112,12 +117,10 @@ function MainProductsPage({
         }
 
         setOrderDialog({
+            ...getInitialOrderDialog(),
             open: true,
             mode: 'batch-only',
-            laboratory: '',
             product,
-            batchNumber: '',
-            saving: false,
         });
         setContextMenu((prev) => ({ ...prev, visible: false, submenuOpen: false }));
     };
@@ -135,6 +138,10 @@ function MainProductsPage({
                     name: orderDialog.product.name,
                     laboratory_name: orderDialog.laboratory || undefined,
                     batch_number: orderDialog.batchNumber,
+                    asana_task_number: orderDialog.asanaTaskNumber || undefined,
+                    production_date: orderDialog.productionDate || undefined,
+                    expiry_date: orderDialog.expiryDate || undefined,
+                    planned_test_date: orderDialog.plannedTestDate || undefined,
                 });
                 setSuccess(
                     orderDialog.mode === 'test-order'
@@ -142,14 +149,7 @@ function MainProductsPage({
                         : `Dodano serię ${orderDialog.batchNumber} dla ${orderDialog.product.project_number}.`
                 );
                 setError('');
-                setOrderDialog({
-                    open: false,
-                    mode: 'test-order',
-                    laboratory: '',
-                    product: null,
-                    batchNumber: '',
-                    saving: false,
-                });
+                setOrderDialog(getInitialOrderDialog());
             } catch (err) {
                 setError(err?.response?.data?.detail || err.message || 'Nie udało się zapisać zlecenia badania.');
                 setOrderDialog((prev) => ({ ...prev, saving: false }));
@@ -398,7 +398,7 @@ function MainProductsPage({
 
             {orderDialog.open && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/35 p-4">
-                    <div className="w-full max-w-lg rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl">
+                    <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl">
                         <div className="mb-6">
                             <h2 className="text-2xl font-semibold text-slate-900">
                                 {orderDialog.mode === 'test-order' ? 'Zleć badania' : 'Dodaj serię'}
@@ -430,24 +430,100 @@ function MainProductsPage({
                             </div>
                         )}
 
-                        <div className="mb-6">
-                            <label className="block text-xs font-semibold uppercase tracking-[0.18em] text-slate-500" htmlFor="batch-number">
-                                Numer serii
-                            </label>
-                            <input
-                                id="batch-number"
-                                type="text"
-                                value={orderDialog.batchNumber}
-                                onChange={(event) => setOrderDialog((prev) => ({ ...prev, batchNumber: event.target.value }))}
-                                placeholder="Wprowadź numer serii"
-                                className="mt-3 w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-500 focus:bg-white"
-                            />
+                        <div className="mb-6 grid gap-4 md:grid-cols-2">
+                            <div>
+                                <label className="block text-xs font-semibold uppercase tracking-[0.18em] text-slate-500" htmlFor="batch-number">
+                                    Numer serii
+                                </label>
+                                <input
+                                    id="batch-number"
+                                    type="text"
+                                    value={orderDialog.batchNumber}
+                                    onChange={(event) => setOrderDialog((prev) => ({ ...prev, batchNumber: event.target.value }))}
+                                    placeholder="Wprowadź numer serii"
+                                    className="mt-3 w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-500 focus:bg-white"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-xs font-semibold uppercase tracking-[0.18em] text-slate-500" htmlFor="asana-task-number">
+                                    Numer w Asana
+                                </label>
+                                <input
+                                    id="asana-task-number"
+                                    type="text"
+                                    value={orderDialog.asanaTaskNumber}
+                                    onChange={(event) => setOrderDialog((prev) => ({ ...prev, asanaTaskNumber: event.target.value }))}
+                                    placeholder="Np. 1234567890"
+                                    className="mt-3 w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-500 focus:bg-white"
+                                />
+                                <p className="mt-2 text-xs text-slate-500">
+                                    Numer zadania lub referencji z Asany.
+                                </p>
+                            </div>
+                        </div>
+
+                        <div className="mb-6 rounded-3xl border border-slate-200 bg-slate-50/70 p-4">
+                            <div className="mb-4">
+                                <h3 className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">
+                                    Daty
+                                </h3>
+                            </div>
+                            <div className="space-y-4">
+                            <div>
+                                <label className="block text-xs font-semibold uppercase tracking-[0.18em] text-slate-500" htmlFor="production-date">
+                                    Data produkcji
+                                </label>
+                                <input
+                                    id="production-date"
+                                    type="date"
+                                    value={orderDialog.productionDate}
+                                    onChange={(event) => setOrderDialog((prev) => ({ ...prev, productionDate: event.target.value }))}
+                                    className="mt-3 w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-500 focus:bg-white"
+                                />
+                                <p className="mt-2 text-xs text-slate-500">
+                                    Dotyczy daty produkcji danego produktu, nie terminu samego badania.
+                                </p>
+                            </div>
+
+                            <div>
+                                <label className="block text-xs font-semibold uppercase tracking-[0.18em] text-slate-500" htmlFor="expiry-date">
+                                    Data ważności
+                                </label>
+                                <input
+                                    id="expiry-date"
+                                    type="date"
+                                    value={orderDialog.expiryDate}
+                                    onChange={(event) => setOrderDialog((prev) => ({ ...prev, expiryDate: event.target.value }))}
+                                    className="mt-3 w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-500 focus:bg-white"
+                                />
+                                <p className="mt-2 text-xs text-slate-500">
+                                    Dotyczy daty ważności produktu z tej serii.
+                                </p>
+                            </div>
+
+                            <div>
+                                <label className="block text-xs font-semibold uppercase tracking-[0.18em] text-slate-500" htmlFor="planned-test-date">
+                                    Plan. realizacji
+                                </label>
+                                <input
+                                    id="planned-test-date"
+                                    type="date"
+                                    value={orderDialog.plannedTestDate}
+                                    onChange={(event) => setOrderDialog((prev) => ({ ...prev, plannedTestDate: event.target.value }))}
+                                    className="mt-3 w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-500 focus:bg-white"
+                                />
+                                <p className="mt-2 text-xs text-slate-500">
+                                    Dotyczy planowanej daty realizacji badania.
+                                </p>
+                            </div>
+                            </div>
                         </div>
 
                         <div className="flex justify-end gap-3">
                             <button
                                 type="button"
-                                onClick={() => setOrderDialog({ open: false, mode: 'test-order', laboratory: '', product: null, batchNumber: '', saving: false })}
+                                onClick={() => setOrderDialog(getInitialOrderDialog())}
                                 className="rounded-2xl border border-slate-300 px-5 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
                                 disabled={orderDialog.saving}
                             >

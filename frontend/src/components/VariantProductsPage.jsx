@@ -31,6 +31,10 @@ function VariantProductsPage() {
     const [bulkBatchDialog, setBulkBatchDialog] = useState({
         open: false,
         saving: false,
+        laboratory: '',
+        productionDate: '',
+        expiryDate: '',
+        plannedTestDate: '',
         rows: [],
     });
 
@@ -186,12 +190,18 @@ function VariantProductsPage() {
         setBulkBatchDialog({
             open: true,
             saving: false,
+            laboratory: '',
+            productionDate: '',
+            expiryDate: '',
+            plannedTestDate: '',
             rows: selectedProducts.map((product) => ({
                 id: product.id,
+                projectNumber: product.project_number || '',
                 sku: product.sku,
                 name: product.name,
                 ean: product.ean,
                 batchNumber: '',
+                asanaTaskNumber: '',
             })),
         });
     };
@@ -204,6 +214,10 @@ function VariantProductsPage() {
         setBulkBatchDialog({
             open: false,
             saving: false,
+            laboratory: '',
+            productionDate: '',
+            expiryDate: '',
+            plannedTestDate: '',
             rows: [],
         });
     };
@@ -219,6 +233,17 @@ function VariantProductsPage() {
         }));
     };
 
+    const updateBulkAsanaTaskNumber = (productId, value) => {
+        setBulkBatchDialog((current) => ({
+            ...current,
+            rows: current.rows.map((row) =>
+                row.id === productId
+                    ? { ...row, asanaTaskNumber: value }
+                    : row
+            ),
+        }));
+    };
+
     const handleBulkBatchSave = async () => {
         try {
             setBulkBatchDialog((current) => ({ ...current, saving: true }));
@@ -228,26 +253,39 @@ function VariantProductsPage() {
                         sku: row.sku,
                         name: row.name,
                         ean: row.ean,
+                        laboratory_name: bulkBatchDialog.laboratory,
                         batch_number: row.batchNumber,
+                        asana_task_number: row.asanaTaskNumber,
+                        production_date: bulkBatchDialog.productionDate,
+                        expiry_date: bulkBatchDialog.expiryDate,
+                        planned_test_date: bulkBatchDialog.plannedTestDate,
                     })
                 )
             );
 
-            setSuccess(`Dodano serie dla ${bulkBatchDialog.rows.length} zaznaczonych wariantów.`);
+            setSuccess(`Zlecono badania dla ${bulkBatchDialog.rows.length} zaznaczonych wariantów.`);
             setError('');
             setSelectedProductIds([]);
             setBulkBatchDialog({
                 open: false,
                 saving: false,
+                laboratory: '',
+                productionDate: '',
+                expiryDate: '',
+                plannedTestDate: '',
                 rows: [],
             });
         } catch (err) {
-            setError(err?.response?.data?.detail || err.message || 'Nie udało się dodać serii dla zaznaczonych wariantów.');
+            setError(err?.response?.data?.detail || err.message || 'Nie udało się zlecić badań dla zaznaczonych wariantów.');
             setBulkBatchDialog((current) => ({ ...current, saving: false }));
         }
     };
 
     const isBulkBatchSaveDisabled = bulkBatchDialog.rows.length === 0
+        || !bulkBatchDialog.laboratory
+        || !bulkBatchDialog.productionDate.trim()
+        || !bulkBatchDialog.expiryDate.trim()
+        || !bulkBatchDialog.plannedTestDate.trim()
         || bulkBatchDialog.rows.some((row) => !row.batchNumber.trim())
         || bulkBatchDialog.saving;
 
@@ -271,15 +309,15 @@ function VariantProductsPage() {
                     <button
                         type="button"
                         onClick={openBulkBatchDialog}
-                        className="rounded-xl bg-slate-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                        className="rounded-2xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
                         disabled={selectedProductIds.length === 0}
                     >
-                        Dodaj serię
+                        Zleć badania
                     </button>
                     <button
                         type="button"
                         onClick={() => setSelectedProductIds([])}
-                        className="rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                        className="rounded-2xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
                         disabled={selectedProductIds.length === 0}
                     >
                         Wyczyść zaznaczenie
@@ -504,13 +542,80 @@ function VariantProductsPage() {
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/35 p-4">
                     <div className="w-full max-w-5xl rounded-3xl border border-slate-200 bg-white shadow-2xl">
                         <div className="border-b border-slate-200 px-6 py-5">
-                            <h2 className="text-2xl font-semibold text-slate-900">Dodaj serię</h2>
+                            <h2 className="text-2xl font-semibold text-slate-900">Zleć badania</h2>
                             <p className="mt-2 text-sm text-slate-600">
-                                Uzupełnij numer serii dla zaznaczonych wariantów.
+                                Wybierz laboratorium raz, uzupełnij daty wspólne dla wszystkich pozycji i wpisz numer serii dla każdej linii osobno.
                             </p>
                         </div>
 
                         <div className="max-h-[65vh] overflow-auto px-6 py-5">
+                            <div className="mb-6 grid gap-6 rounded-3xl border border-slate-200 bg-slate-50 p-5 lg:grid-cols-2">
+                                <div>
+                                    <label className="block text-xs font-semibold uppercase tracking-[0.18em] text-slate-500" htmlFor="bulk-variant-laboratory">
+                                        Laboratorium
+                                    </label>
+                                    <select
+                                        id="bulk-variant-laboratory"
+                                        value={bulkBatchDialog.laboratory}
+                                        onChange={(event) => setBulkBatchDialog((current) => ({ ...current, laboratory: event.target.value }))}
+                                        className="mt-3 w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-500"
+                                    >
+                                        <option value="">Wybierz laboratorium raz</option>
+                                        {LABORATORIES.map((laboratory) => (
+                                            <option key={laboratory} value={laboratory}>
+                                                {laboratory}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div>
+                                    <div className="block text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                                        Daty
+                                    </div>
+                                    <div className="mt-3 grid gap-4 md:grid-cols-3">
+                                        <label className="block">
+                                            <span className="text-sm font-medium text-slate-900">Data produkcji</span>
+                                            <input
+                                                type="text"
+                                                value={bulkBatchDialog.productionDate}
+                                                onChange={(event) => setBulkBatchDialog((current) => ({ ...current, productionDate: event.target.value }))}
+                                                placeholder="dd.mm.rrrr"
+                                                className="mt-2 w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-500"
+                                            />
+                                            <span className="mt-2 block text-xs leading-5 text-slate-500">
+                                                Dotyczy daty produkcji danego produktu, nie terminu samego badania.
+                                            </span>
+                                        </label>
+                                        <label className="block">
+                                            <span className="text-sm font-medium text-slate-900">Data ważności</span>
+                                            <input
+                                                type="text"
+                                                value={bulkBatchDialog.expiryDate}
+                                                onChange={(event) => setBulkBatchDialog((current) => ({ ...current, expiryDate: event.target.value }))}
+                                                placeholder="dd.mm.rrrr"
+                                                className="mt-2 w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-500"
+                                            />
+                                            <span className="mt-2 block text-xs leading-5 text-slate-500">
+                                                Dotyczy daty ważności produktu z tej serii.
+                                            </span>
+                                        </label>
+                                        <label className="block">
+                                            <span className="text-sm font-medium text-slate-900">Plan. realizacji</span>
+                                            <input
+                                                type="text"
+                                                value={bulkBatchDialog.plannedTestDate}
+                                                onChange={(event) => setBulkBatchDialog((current) => ({ ...current, plannedTestDate: event.target.value }))}
+                                                placeholder="dd.mm.rrrr"
+                                                className="mt-2 w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-500"
+                                            />
+                                            <span className="mt-2 block text-xs leading-5 text-slate-500">
+                                                Dotyczy planowanej daty realizacji badania.
+                                            </span>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+
                             <div className="overflow-hidden rounded-3xl border border-slate-200">
                                 <table className="w-full text-left text-sm">
                                     <thead className="bg-slate-50 text-xs uppercase tracking-[0.18em] text-slate-500">
@@ -518,15 +623,25 @@ function VariantProductsPage() {
                                             <th className="px-4 py-4">Numer projektu</th>
                                             <th className="px-4 py-4">Numer wariantu</th>
                                             <th className="px-4 py-4">Nazwa</th>
+                                            <th className="px-4 py-4">Numer w Asana</th>
                                             <th className="px-4 py-4">Numer serii</th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                         {bulkBatchDialog.rows.map((row) => (
                                             <tr key={row.id} className="border-t border-slate-100">
-                                                <td className="whitespace-nowrap px-4 py-4 text-slate-700">{row.project_number || '—'}</td>
+                                                <td className="whitespace-nowrap px-4 py-4 text-slate-700">{row.projectNumber || '—'}</td>
                                                 <td className="whitespace-nowrap px-4 py-4 font-semibold text-slate-900">{row.sku}</td>
                                                 <td className="px-4 py-4 text-slate-700">{row.name}</td>
+                                                <td className="px-4 py-4">
+                                                    <input
+                                                        type="text"
+                                                        value={row.asanaTaskNumber}
+                                                        onChange={(event) => updateBulkAsanaTaskNumber(row.id, event.target.value)}
+                                                        placeholder="Np. 1234567890"
+                                                        className="w-full min-w-[12rem] rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-500 focus:bg-white"
+                                                    />
+                                                </td>
                                                 <td className="px-4 py-4">
                                                     <input
                                                         type="text"

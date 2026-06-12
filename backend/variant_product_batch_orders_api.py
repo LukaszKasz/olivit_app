@@ -10,6 +10,15 @@ class VariantProductBatchTestOrderCreate(BaseModel):
     ean: str
     laboratory_name: Optional[str] = None
     batch_number: str
+    asana_task_number: Optional[str] = None
+    production_date: Optional[str] = None
+    expiry_date: Optional[str] = None
+    planned_test_date: Optional[str] = None
+
+
+class VariantProductBatchTestOrderUpdate(BaseModel):
+    workflow_status: Optional[str] = None
+    clarification_note: Optional[str] = None
 
 
 class VariantProductBatchArchiveRequest(BaseModel):
@@ -29,8 +38,15 @@ class VariantProductBatchTestOrderResponse(BaseModel):
     ean: str
     laboratory_name: Optional[str] = None
     batch_number: str
+    asana_task_number: Optional[str] = None
     batch_added_at: datetime
     ordered_at: Optional[datetime] = None
+    production_date: Optional[str] = None
+    expiry_date: Optional[str] = None
+    planned_test_date: Optional[str] = None
+    workflow_status: Optional[str] = None
+    clarification_note: Optional[str] = None
+    label_status: Optional[str] = None
     printed_material_type: Optional[str] = None
     product_name: Optional[str] = None
     product_project_number: Optional[str] = None

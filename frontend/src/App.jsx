@@ -41,23 +41,46 @@ function App() {
                     <Route
                         path="/main-products/to-pack"
                         element={
-                            <MainProductsPage
+                            <MainProductOrderedTestsPage
                                 title="Bulk / Baza produktów - Do spakowania"
-                                description="Lista produktów z bazy, gotowych do dalszej obsługi i pakowania."
+                                description="Widok prezentuje produkty główne przekazane do dalszej obsługi i pakowania."
+                                viewMode="to_pack"
                             />
                         }
                     />
                     <Route path="/main-products/ordered-tests" element={<MainProductOrderedTestsPage />} />
                     <Route
                         path="/main-products/to-clarify"
-                        element={<MenuPlaceholderPage title="Bulk / Baza produktów - Do wyjaśnienia" />}
+                        element={
+                            <MainProductOrderedTestsPage
+                                title="Bulk / Baza produktów - Do wyjaśnienia"
+                                description="Widok prezentuje produkty główne wymagające dodatkowego wyjaśnienia wraz z notatkami."
+                                viewMode="to_clarify"
+                            />
+                        }
                     />
                     <Route
                         path="/main-products/archive"
-                        element={<MenuPlaceholderPage title="Bulk / Baza produktów - Archiwum" />}
+                        element={
+                            <MainProductOrderedTestsPage
+                                title="Bulk / Baza produktów - Archiwum"
+                                description="Widok prezentuje zarchiwizowane produkty główne."
+                                viewMode="archive"
+                            />
+                        }
                     />
                     <Route path="/product-variants" element={<VariantProductsPage />} />
                     <Route path="/product-variants/batches/ordered-tests" element={<VariantProductBatchOrderedTestsPage />} />
+                    <Route
+                        path="/product-variants/batches/to-clarify"
+                        element={
+                            <VariantProductBatchOrderedTestsPage
+                                title="Produkty spakowane / Warianty - Do wyjaśnienia"
+                                description="Widok prezentuje partie wariantów wymagające dodatkowego wyjaśnienia wraz z notatkami."
+                                viewMode="to_clarify"
+                            />
+                        }
+                    />
                     <Route
                         path="/product-variants/finished-product-control"
                         element={
@@ -65,6 +88,7 @@ function App() {
                                 title="Produkty spakowane / Warianty - Kontrola produktu gotowego - Bieżące"
                                 description="Bieżąca lista zapisanych kontroli produktu gotowego."
                                 enableFinishedProductControl
+                                finishedProductControlFilter="current"
                             />
                         }
                     />
