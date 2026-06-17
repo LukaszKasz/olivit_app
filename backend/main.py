@@ -2167,12 +2167,6 @@ def create_variant_product_finished_product_control(
         .first()
     )
 
-    if order and order.sku != fields["sku"]:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Dane formularza nie pasują do wybranej partii",
-        )
-
     order_comment = (payload.comment or "").strip() or None
 
     if order:

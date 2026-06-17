@@ -197,6 +197,21 @@ function TwoLineNameCell({ children }) {
     );
 }
 
+function renderFinishedControlValue(value, highlightNegative = false) {
+    const displayValue = value || '—';
+    const isNegative = highlightNegative && value === 'Nie';
+
+    if (!isNegative) {
+        return displayValue;
+    }
+
+    return (
+        <span className="inline-flex rounded-full bg-rose-100 px-3 py-1 text-xs font-semibold text-rose-800">
+            {displayValue}
+        </span>
+    );
+}
+
 function isAffirmative(value) {
     return value === 'Tak' || value === 'Nie dotyczy';
 }
@@ -278,6 +293,7 @@ function VariantProductBatchOrderedTestsPage({
         targetStatus: 'archive',
         note: '',
     });
+    const highlightNegativeFinishedControlValues = enableFinishedProductControl && finishedProductControlFilter === 'incorrect';
 
     const loadRows = async () => {
         const data = enableFinishedProductControl
@@ -923,14 +939,32 @@ function VariantProductBatchOrderedTestsPage({
                                     <th className="w-[22rem] min-w-[22rem] px-6 py-4">Nazwa</th>
                                     <th className="px-6 py-4">EAN</th>
                                     <th className="px-6 py-4">Numer w Asana</th>
+                                    <th className="px-6 py-4">Laboratorium</th>
                                     <th className="px-6 py-4">Materiał</th>
+                                    <th className="px-6 py-4">Nazwa produktu</th>
                                     <th className="px-6 py-4">Nr projektowy</th>
-                                    <th className="px-6 py-4">Nr serii</th>
-                                    <th className="px-6 py-4">Data ważności</th>
-                                    <th className="px-6 py-4">Data</th>
+                                    <th className="px-6 py-4">EAN produktu</th>
+                                    <th className="px-6 py-4">Seria produktu</th>
+                                    <th className="px-6 py-4">Data ważności produktu</th>
+                                    <th className="px-6 py-4">Data kontroli</th>
                                     <th className="px-6 py-4">Wersja rynku</th>
+                                    <th className="px-6 py-4">Substancje vs PDS</th>
+                                    <th className="px-6 py-4">Wersja etykiety zgodna</th>
+                                    <th className="px-6 py-4">Błędy drukarskie</th>
+                                    <th className="px-6 py-4">Błędy graficzne</th>
+                                    <th className="px-6 py-4">Poprawność nadruku</th>
+                                    <th className="px-6 py-4">Błędy oklejenia</th>
+                                    <th className="px-6 py-4">Nakrętka</th>
+                                    <th className="px-6 py-4">Wkładka zgrzew</th>
+                                    <th className="px-6 py-4">Wkładka otwieranie</th>
+                                    <th className="px-6 py-4">Zabrudzenie</th>
+                                    <th className="px-6 py-4">Uszkodzenie</th>
+                                    <th className="px-6 py-4">Kod QR</th>
+                                    <th className="px-6 py-4">Zawartość zgodna</th>
                                     <th className="px-6 py-4">Status etykiety</th>
                                     <th className="px-6 py-4">Zweryfikowano</th>
+                                    <th className="px-6 py-4">Komentarz</th>
+                                    <th className="px-6 py-4">Data utworzenia</th>
                                 </tr>
                             ) : (
                                 <tr>
@@ -986,13 +1020,13 @@ function VariantProductBatchOrderedTestsPage({
                         <tbody>
                             {loading ? (
                                 <tr className="border-t border-slate-100">
-                                    <td colSpan={enableFinishedProductControl ? 14 : showClarificationColumn ? 39 : 38} className="px-6 py-10 text-center text-slate-500">
+                                    <td colSpan={enableFinishedProductControl ? 32 : showClarificationColumn ? 39 : 38} className="px-6 py-10 text-center text-slate-500">
                                         {enableFinishedProductControl ? 'Ładowanie kontroli produktu gotowego...' : 'Ładowanie zleconych badań partii...'}
                                     </td>
                                 </tr>
                             ) : filteredRows.length === 0 ? (
                                 <tr className="border-t border-slate-100">
-                                    <td colSpan={enableFinishedProductControl ? 14 : showClarificationColumn ? 39 : 38} className="px-6 py-10 text-center text-slate-500">
+                                    <td colSpan={enableFinishedProductControl ? 32 : showClarificationColumn ? 39 : 38} className="px-6 py-10 text-center text-slate-500">
                                         Brak wyników dla podanego wyszukiwania.
                                     </td>
                                 </tr>
@@ -1023,14 +1057,32 @@ function VariantProductBatchOrderedTestsPage({
                                                 <td className="w-[22rem] min-w-[22rem] px-6 py-4"><TwoLineNameCell>{row.name}</TwoLineNameCell></td>
                                                 <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.ean}</td>
                                                 <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.asana_task_number || '—'}</td>
-                                                <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.printed_material_type}</td>
-                                                <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.product_project_number}</td>
-                                                <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.product_batch_number}</td>
-                                                <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.product_expiry_date}</td>
-                                                <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.control_date}</td>
-                                                <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.market_label_version}</td>
+                                                <td className="px-6 py-4 text-slate-700">{row.laboratory_name || '—'}</td>
+                                                <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.printed_material_type || '—'}</td>
+                                                <td className="px-6 py-4 text-slate-700">{row.product_name || '—'}</td>
+                                                <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.product_project_number || '—'}</td>
+                                                <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.product_ean_number || '—'}</td>
+                                                <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.product_batch_number || '—'}</td>
+                                                <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.product_expiry_date || '—'}</td>
+                                                <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.control_date || '—'}</td>
+                                                <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.market_label_version || '—'}</td>
+                                                <td className="whitespace-nowrap px-6 py-4 text-slate-700">{renderFinishedControlValue(row.active_substances_match_pds, highlightNegativeFinishedControlValues)}</td>
+                                                <td className="whitespace-nowrap px-6 py-4 text-slate-700">{renderFinishedControlValue(row.label_version_matches_used_version, highlightNegativeFinishedControlValues)}</td>
+                                                <td className="whitespace-nowrap px-6 py-4 text-slate-700">{renderFinishedControlValue(row.has_printing_errors, highlightNegativeFinishedControlValues)}</td>
+                                                <td className="whitespace-nowrap px-6 py-4 text-slate-700">{renderFinishedControlValue(row.has_graphic_design_errors, highlightNegativeFinishedControlValues)}</td>
+                                                <td className="whitespace-nowrap px-6 py-4 text-slate-700">{renderFinishedControlValue(row.print_correctness, highlightNegativeFinishedControlValues)}</td>
+                                                <td className="whitespace-nowrap px-6 py-4 text-slate-700">{renderFinishedControlValue(row.has_labeling_errors, highlightNegativeFinishedControlValues)}</td>
+                                                <td className="whitespace-nowrap px-6 py-4 text-slate-700">{renderFinishedControlValue(row.cap_is_correct, highlightNegativeFinishedControlValues)}</td>
+                                                <td className="whitespace-nowrap px-6 py-4 text-slate-700">{renderFinishedControlValue(row.induction_seal_weld_correct, highlightNegativeFinishedControlValues)}</td>
+                                                <td className="whitespace-nowrap px-6 py-4 text-slate-700">{renderFinishedControlValue(row.induction_seal_opening_correct, highlightNegativeFinishedControlValues)}</td>
+                                                <td className="whitespace-nowrap px-6 py-4 text-slate-700">{renderFinishedControlValue(row.package_is_dirty, highlightNegativeFinishedControlValues)}</td>
+                                                <td className="whitespace-nowrap px-6 py-4 text-slate-700">{renderFinishedControlValue(row.package_is_damaged, highlightNegativeFinishedControlValues)}</td>
+                                                <td className="whitespace-nowrap px-6 py-4 text-slate-700">{renderFinishedControlValue(row.qr_code_is_active, highlightNegativeFinishedControlValues)}</td>
+                                                <td className="whitespace-nowrap px-6 py-4 text-slate-700">{renderFinishedControlValue(row.package_contents_match_card, highlightNegativeFinishedControlValues)}</td>
                                                 <td className="whitespace-nowrap px-6 py-4 text-slate-700">{LABEL_STATUS_META[row.label_status || 'current']?.label || '—'}</td>
-                                                <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.product_verified}</td>
+                                                <td className="whitespace-nowrap px-6 py-4 text-slate-700">{renderFinishedControlValue(row.product_verified, highlightNegativeFinishedControlValues)}</td>
+                                                <td className="px-6 py-4 text-slate-700">{row.comment || '—'}</td>
+                                                <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.created_at ? new Date(row.created_at).toLocaleString('pl-PL') : '—'}</td>
                                             </>
                                         ) : (
                                             <>
