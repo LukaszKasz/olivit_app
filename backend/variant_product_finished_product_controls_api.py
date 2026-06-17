@@ -52,6 +52,8 @@ class VariantProductFinishedProductControlCreate(BaseModel):
 class VariantProductFinishedProductControlResponse(BaseModel):
     id: int
     ordered_test_id: Optional[int] = None
+    test_order_id: Optional[int] = None
+    label_control_id: Optional[int] = None
     project_number: Optional[str] = None
     sku: str
     name: str

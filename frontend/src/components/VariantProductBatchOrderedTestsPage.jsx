@@ -15,6 +15,10 @@ const LABEL_STATUS_META = {
     correct: { label: 'Poprawne', className: 'bg-emerald-100 text-emerald-800' },
 };
 
+function buildDefaultCoaConclusion(projectNumber) {
+    return `The product meets the requirements of the product specification in accordance with the product sheet ${projectNumber}.\nProdukt spełnia wymagania specyfikacji produktu zgodnie z kartą produktu ${projectNumber}.`;
+}
+
 const CONTROL_QUESTION_FIELDS = [
     {
         field: 'active_substances_match_pds',
@@ -104,7 +108,7 @@ const CONTROL_QUESTION_FIELDS = [
 
 function createInitialForm(order = null) {
     return {
-        ordered_test_id: order?.id || null,
+        ordered_test_id: order?.test_order_id || order?.id || null,
         sku: order?.sku || '',
         name: order?.name || '',
         ean: order?.ean || '',
@@ -281,9 +285,14 @@ function VariantProductBatchOrderedTestsPage({
         projectNumber: '',
         details: [],
         selectedDetailIds: [],
+        linkedDocumentNames: [],
+        selectedLinkedDocumentNames: [],
+        conclusionText: '',
     });
     const [documentsDialog, setDocumentsDialog] = useState({
         open: false,
+        saving: false,
+        existingDocumentNames: [],
         files: Array(6).fill(null),
         previewIndex: null,
     });
@@ -657,6 +666,9 @@ function VariantProductBatchOrderedTestsPage({
     const handleGenerateCoA = async () => {
         const selectedRows = rows.filter((row) => selectedRowIds.includes(row.id));
         const projectNumbers = Array.from(new Set(selectedRows.map((row) => row.project_number).filter(Boolean)));
+        const linkedDocumentNames = Array.from(new Set(
+            selectedRows.flatMap((row) => Array.isArray(row.linked_document_names) ? row.linked_document_names : [])
+        ));
 
         if (projectNumbers.length !== 1) {
             setError('Zaznaczone pozycje do CoA muszą mieć ten sam numer projektu.');
@@ -671,6 +683,9 @@ function VariantProductBatchOrderedTestsPage({
                 projectNumber: projectNumbers[0],
                 details: [],
                 selectedDetailIds: [],
+                linkedDocumentNames: [],
+                selectedLinkedDocumentNames: [],
+                conclusionText: buildDefaultCoaConclusion(projectNumbers[0]),
             });
             const details = await variantProductsAPI.getProjectDetails(projectNumbers[0]);
             setCoaDialog({
@@ -680,6 +695,9 @@ function VariantProductBatchOrderedTestsPage({
                 projectNumber: projectNumbers[0],
                 details: Array.isArray(details) ? details : [],
                 selectedDetailIds: Array.isArray(details) ? details.map((detail) => detail.id) : [],
+                linkedDocumentNames,
+                selectedLinkedDocumentNames: linkedDocumentNames,
+                conclusionText: buildDefaultCoaConclusion(projectNumbers[0]),
             });
             setError('');
         } catch (err) {
@@ -690,6 +708,9 @@ function VariantProductBatchOrderedTestsPage({
                 projectNumber: '',
                 details: [],
                 selectedDetailIds: [],
+                linkedDocumentNames: [],
+                selectedLinkedDocumentNames: [],
+                conclusionText: '',
             });
             setError(err?.response?.data?.detail || err.message || 'Nie udało się pobrać informacji szczegółowych do CoA.');
         }
@@ -706,6 +727,9 @@ function VariantProductBatchOrderedTestsPage({
             projectNumber: '',
             details: [],
             selectedDetailIds: [],
+            linkedDocumentNames: [],
+            selectedLinkedDocumentNames: [],
+            conclusionText: '',
         });
     };
 
@@ -727,12 +751,23 @@ function VariantProductBatchOrderedTestsPage({
         }));
     };
 
+    const toggleCoaLinkedDocument = (documentName) => {
+        setCoaDialog((current) => ({
+            ...current,
+            selectedLinkedDocumentNames: current.selectedLinkedDocumentNames.includes(documentName)
+                ? current.selectedLinkedDocumentNames.filter((name) => name !== documentName)
+                : [...current.selectedLinkedDocumentNames, documentName],
+        }));
+    };
+
     const handleConfirmGenerateCoA = async () => {
         try {
             setCoaDialog((current) => ({ ...current, saving: true }));
             const response = await variantProductsAPI.generateBatchCoA({
                 ids: selectedRowIds,
                 detail_ids: coaDialog.selectedDetailIds,
+                linked_document_names: coaDialog.selectedLinkedDocumentNames,
+                conclusion_text: coaDialog.conclusionText,
             });
             const blob = new Blob([response.data], { type: 'application/pdf' });
             const downloadUrl = window.URL.createObjectURL(blob);
@@ -754,10 +789,17 @@ function VariantProductBatchOrderedTestsPage({
     };
 
     const openDocumentsDialog = () => {
-        setDocumentsDialog((current) => ({
-            ...current,
+        const selectedRows = rows.filter((row) => selectedRowIds.includes(row.id));
+        const existingDocumentNames = Array.from(new Set(
+            selectedRows.flatMap((row) => Array.isArray(row.linked_document_names) ? row.linked_document_names : [])
+        ));
+        setDocumentsDialog({
             open: true,
-        }));
+            saving: false,
+            existingDocumentNames,
+            files: Array(6).fill(null),
+            previewIndex: null,
+        });
     };
 
     const closeDocumentsDialog = () => {
@@ -769,6 +811,8 @@ function VariantProductBatchOrderedTestsPage({
         setDocumentsDialog((current) => ({
             ...current,
             open: false,
+            saving: false,
+            existingDocumentNames: [],
             files: Array(6).fill(null),
             previewIndex: null,
         }));
@@ -795,11 +839,29 @@ function VariantProductBatchOrderedTestsPage({
         });
     };
 
-    const handleSaveDocuments = () => {
-        const selectedDocumentsCount = documentsDialog.files.filter(Boolean).length;
-        setSuccess(`Dodano ${selectedDocumentsCount} dokumentów do zaznaczonych pozycji.`);
-        setError('');
-        closeDocumentsDialog();
+    const handleSaveDocuments = async () => {
+        const documentNames = documentsDialog.files
+            .filter(Boolean)
+            .map((file) => file.name);
+        if (documentNames.length === 0) {
+            setError('Wybierz co najmniej jeden plik.');
+            return;
+        }
+
+        try {
+            setDocumentsDialog((current) => ({ ...current, saving: true }));
+            await variantProductsAPI.saveBatchDocuments({
+                ids: selectedRowIds,
+                document_names: documentNames,
+            });
+            setRows(await loadRows());
+            setSuccess(`Dodano ${documentNames.length} nazw dokumentów do zaznaczonych pozycji.`);
+            setError('');
+            closeDocumentsDialog();
+        } catch (err) {
+            setError(err?.response?.data?.detail || err.message || 'Nie udało się zapisać nazw dokumentów.');
+            setDocumentsDialog((current) => ({ ...current, saving: false }));
+        }
     };
 
     const previewDocument = documentsDialog.previewIndex !== null
@@ -934,6 +996,8 @@ function VariantProductBatchOrderedTestsPage({
                                             />
                                         )}
                                     </th>
+                                    <th className="px-6 py-4">ID badania</th>
+                                    <th className="px-6 py-4">ID kontroli etykiety</th>
                                     <th className="px-6 py-4">Numer projektu</th>
                                     <th className="px-6 py-4">Numer wariantu</th>
                                     <th className="w-[22rem] min-w-[22rem] px-6 py-4">Nazwa</th>
@@ -976,6 +1040,8 @@ function VariantProductBatchOrderedTestsPage({
                                             aria-label="Zaznacz wszystkie widoczne wiersze"
                                         />
                                     </th>
+                                    <th className="px-6 py-4">ID badania</th>
+                                    <th className="px-6 py-4">ID kontroli etykiety</th>
                                     <th className="px-6 py-4">Numer projektu</th>
                                     <th className="px-6 py-4">Numer wariantu</th>
                                     <th className="w-[22rem] min-w-[22rem] px-6 py-4">Nazwa</th>
@@ -1020,13 +1086,13 @@ function VariantProductBatchOrderedTestsPage({
                         <tbody>
                             {loading ? (
                                 <tr className="border-t border-slate-100">
-                                    <td colSpan={enableFinishedProductControl ? 32 : showClarificationColumn ? 39 : 38} className="px-6 py-10 text-center text-slate-500">
+                                    <td colSpan={enableFinishedProductControl ? 34 : showClarificationColumn ? 41 : 40} className="px-6 py-10 text-center text-slate-500">
                                         {enableFinishedProductControl ? 'Ładowanie kontroli produktu gotowego...' : 'Ładowanie zleconych badań partii...'}
                                     </td>
                                 </tr>
                             ) : filteredRows.length === 0 ? (
                                 <tr className="border-t border-slate-100">
-                                    <td colSpan={enableFinishedProductControl ? 32 : showClarificationColumn ? 39 : 38} className="px-6 py-10 text-center text-slate-500">
+                                    <td colSpan={enableFinishedProductControl ? 34 : showClarificationColumn ? 41 : 40} className="px-6 py-10 text-center text-slate-500">
                                         Brak wyników dla podanego wyszukiwania.
                                     </td>
                                 </tr>
@@ -1045,6 +1111,12 @@ function VariantProductBatchOrderedTestsPage({
                                                 onClick={(event) => event.stopPropagation()}
                                                 aria-label={`Zaznacz wiersz ${row.sku}`}
                                             />
+                                        </td>
+                                        <td className="whitespace-nowrap px-6 py-4 text-slate-700">
+                                            {row.test_order_id ?? '—'}
+                                        </td>
+                                        <td className="whitespace-nowrap px-6 py-4 text-slate-700">
+                                            {row.label_control_id ?? '—'}
                                         </td>
                                         <td className="whitespace-nowrap px-6 py-4 text-slate-700">
                                             {row.project_number || '—'}
@@ -1418,6 +1490,38 @@ function VariantProductBatchOrderedTestsPage({
                                             {coaDialog.selectedDetailIds.length === coaDialog.details.length ? 'Odznacz wszystko' : 'Zaznacz wszystko'}
                                         </button>
                                     </div>
+                                    <div className="mb-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
+                                        <div className="mb-3 text-sm font-medium text-slate-900">LINKED DOCUMENTS / DOKUMENTY ZWIĄZANE</div>
+                                        {coaDialog.linkedDocumentNames.length === 0 ? (
+                                            <div className="text-sm text-slate-500">
+                                                Brak nazw dokumentów dodanych wcześniej do zaznaczonych badań.
+                                            </div>
+                                        ) : (
+                                            <div className="grid gap-2">
+                                                {coaDialog.linkedDocumentNames.map((documentName) => (
+                                                    <label key={documentName} className="inline-flex items-center gap-3 text-sm text-slate-700">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={coaDialog.selectedLinkedDocumentNames.includes(documentName)}
+                                                            onChange={() => toggleCoaLinkedDocument(documentName)}
+                                                        />
+                                                        <span>{documentName}</span>
+                                                    </label>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                    <div className="mb-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
+                                        <label className="block">
+                                            <span className="mb-3 block text-sm font-medium text-slate-900">CONCLUSION / WNIOSEK</span>
+                                            <textarea
+                                                value={coaDialog.conclusionText}
+                                                onChange={(event) => setCoaDialog((current) => ({ ...current, conclusionText: event.target.value }))}
+                                                rows={4}
+                                                className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-500"
+                                            />
+                                        </label>
+                                    </div>
                                     <div className="max-h-[60vh] overflow-auto rounded-2xl border border-slate-200">
                                         {coaDialog.details.length === 0 ? (
                                             <div className="px-4 py-8 text-center text-sm text-slate-500">
@@ -1516,6 +1620,22 @@ function VariantProductBatchOrderedTestsPage({
                             </p>
                         </div>
                         <div className="grid gap-4 px-6 py-6">
+                            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
+                                <div className="text-sm font-semibold text-slate-900">Zapisane nazwy dokumentów</div>
+                                {documentsDialog.existingDocumentNames.length === 0 ? (
+                                    <div className="mt-2 text-sm text-slate-500">
+                                        Brak zapisanych nazw dokumentów dla zaznaczonych badań.
+                                    </div>
+                                ) : (
+                                    <div className="mt-2 flex flex-wrap gap-2">
+                                        {documentsDialog.existingDocumentNames.map((documentName) => (
+                                            <span key={documentName} className="rounded-full border border-slate-300 bg-white px-3 py-1 text-sm text-slate-700">
+                                                {documentName}
+                                            </span>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
                             {documentsDialog.files.map((file, index) => {
                                 const inputId = `batch-document-${index + 1}`;
 
@@ -1539,7 +1659,7 @@ function VariantProductBatchOrderedTestsPage({
                                                 />
                                                 <label
                                                     htmlFor={inputId}
-                                                    className="cursor-pointer rounded-xl border border-slate-300 px-4 py-2 text-sm text-slate-700 transition hover:bg-white"
+                                                    className={`rounded-xl border border-slate-300 px-4 py-2 text-sm text-slate-700 transition hover:bg-white ${documentsDialog.saving ? 'pointer-events-none opacity-50' : 'cursor-pointer'}`}
                                                 >
                                                     Dodaj
                                                 </label>
@@ -1547,7 +1667,7 @@ function VariantProductBatchOrderedTestsPage({
                                                     type="button"
                                                     onClick={() => setDocumentsDialog((current) => ({ ...current, previewIndex: index }))}
                                                     className="rounded-xl border border-slate-300 px-4 py-2 text-sm text-slate-700 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
-                                                    disabled={!file}
+                                                    disabled={!file || documentsDialog.saving}
                                                 >
                                                     Podgląd
                                                 </button>
@@ -1555,7 +1675,7 @@ function VariantProductBatchOrderedTestsPage({
                                                     type="button"
                                                     onClick={() => updateDocumentSlot(index, null)}
                                                     className="rounded-xl border border-slate-300 px-4 py-2 text-sm text-slate-700 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
-                                                    disabled={!file}
+                                                    disabled={!file || documentsDialog.saving}
                                                 >
                                                     Usuń
                                                 </button>
@@ -1591,16 +1711,18 @@ function VariantProductBatchOrderedTestsPage({
                             <button
                                 type="button"
                                 onClick={closeDocumentsDialog}
-                                className="rounded-2xl border border-slate-300 px-5 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                                disabled={documentsDialog.saving}
+                                className="rounded-2xl border border-slate-300 px-5 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
                             >
                                 Anuluj
                             </button>
                             <button
                                 type="button"
                                 onClick={handleSaveDocuments}
-                                className="rounded-2xl bg-slate-900 px-5 py-3 text-sm font-medium text-white transition hover:bg-slate-800"
+                                disabled={documentsDialog.saving}
+                                className="rounded-2xl bg-slate-900 px-5 py-3 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
                             >
-                                Zapisz
+                                {documentsDialog.saving ? 'Zapisywanie...' : 'Zapisz'}
                             </button>
                         </div>
                     </div>

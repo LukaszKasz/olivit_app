@@ -191,6 +191,10 @@ export const variantProductsAPI = {
         const response = await api.post('/api/variant-products/batches/archive', { ids });
         return response.data;
     },
+    saveBatchDocuments: async (payload) => {
+        const response = await api.post('/api/variant-products/batches/documents', payload);
+        return response.data;
+    },
     generateBatchCoA: async (payload) => {
         const response = await api.post('/api/variant-products/batches/coa', payload, { responseType: 'blob' });
         return response;

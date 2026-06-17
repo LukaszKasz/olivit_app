@@ -130,6 +130,7 @@ class VariantProductBatchTestOrder(Base):
     product_verified = Column(String(10), nullable=True)
     product_verified_note = Column(String(2000), nullable=True)
     comment = Column(String(2000), nullable=True)
+    linked_document_names = Column(String(4000), nullable=True)
     control_saved_at = Column(DateTime(timezone=True), nullable=True, index=True)
 
 
@@ -137,6 +138,7 @@ class VariantProductBatchTestOrderArchive(Base):
     __tablename__ = "variant_product_batch_test_orders_archive"
 
     id = Column(Integer, primary_key=True, index=True)
+    ordered_test_id = Column(Integer, index=True, nullable=True)
     sku = Column(String(100), index=True, nullable=False)
     name = Column(String(512), nullable=False)
     ean = Column(String(255), nullable=False)
@@ -188,6 +190,7 @@ class VariantProductBatchTestOrderArchive(Base):
     product_verified = Column(String(10), nullable=True)
     product_verified_note = Column(String(2000), nullable=True)
     comment = Column(String(2000), nullable=True)
+    linked_document_names = Column(String(4000), nullable=True)
     control_saved_at = Column(DateTime(timezone=True), nullable=True, index=True)
     archived_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
 

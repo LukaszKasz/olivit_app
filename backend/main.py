@@ -45,6 +45,7 @@ from variant_products_api import VariantProductResponse, VariantProductsPageResp
 from variant_product_batch_orders_api import (
     VariantProductBatchArchiveRequest,
     VariantProductBatchCoARequest,
+    VariantProductBatchDocumentsRequest,
     VariantProductBatchTestOrderCreate,
     VariantProductBatchTestOrderResponse,
     VariantProductBatchTestOrderUpdate,
@@ -150,6 +151,57 @@ def get_project_number_from_variant_sku(sku: str) -> str | None:
     return None
 
 
+def get_variant_batch_row_test_order_id(row: VariantProductBatchTestOrder | VariantProductBatchTestOrderArchive) -> int | None:
+    if isinstance(row, VariantProductBatchTestOrderArchive):
+        return row.ordered_test_id or row.id
+    return row.id
+
+
+def parse_linked_document_names(value: str | None) -> list[str]:
+    raw = (value or "").strip()
+    if not raw:
+        return []
+    try:
+        parsed = json.loads(raw)
+    except JSONDecodeError:
+        return [line.strip() for line in raw.splitlines() if line.strip()]
+    if not isinstance(parsed, list):
+        return []
+    return [str(item).strip() for item in parsed if str(item).strip()]
+
+
+def serialize_linked_document_names(names: list[str]) -> str | None:
+    normalized: list[str] = []
+    for name in names:
+        value = str(name or "").strip()
+        if value and value not in normalized:
+            normalized.append(value)
+    if not normalized:
+        return None
+    return json.dumps(normalized, ensure_ascii=False)
+
+
+def build_default_coa_conclusion(project_number: str) -> str:
+    return (
+        f"The product meets the requirements of the product specification in accordance with the product sheet {project_number}.\n"
+        f"Produkt spełnia wymagania specyfikacji produktu zgodnie z kartą produktu {project_number}."
+    )
+
+
+def does_control_match_order(
+    control: VariantProductFinishedProductControl,
+    order: VariantProductBatchTestOrder | VariantProductBatchTestOrderArchive,
+) -> bool:
+    if control.sku != order.sku:
+        return False
+    control_batch_number = (control.product_batch_number or "").strip()
+    if control_batch_number and control_batch_number != (order.batch_number or "").strip():
+        return False
+    if (control.ean or "").strip() and control.ean != (order.ean or "").strip():
+        return False
+    return True
+
+
 def serialize_variant_product(product: VariantProduct) -> dict:
     return {
         "id": product.id,
@@ -161,9 +213,15 @@ def serialize_variant_product(product: VariantProduct) -> dict:
     }
 
 
-def serialize_variant_batch_row(row: VariantProductBatchTestOrder | VariantProductBatchTestOrderArchive) -> dict:
+def serialize_variant_batch_row(
+    row: VariantProductBatchTestOrder | VariantProductBatchTestOrderArchive,
+    *,
+    label_control_id: int | None = None,
+) -> dict:
     return {
         "id": row.id,
+        "test_order_id": get_variant_batch_row_test_order_id(row),
+        "label_control_id": label_control_id,
         "sku": row.sku,
         "project_number": get_project_number_from_variant_sku(row.sku),
         "name": row.name,
@@ -216,6 +274,7 @@ def serialize_variant_batch_row(row: VariantProductBatchTestOrder | VariantProdu
         "product_verified": row.product_verified,
         "product_verified_note": row.product_verified_note,
         "comment": row.comment,
+        "linked_document_names": parse_linked_document_names(getattr(row, "linked_document_names", None)),
         "control_saved_at": row.control_saved_at,
         "archived_at": getattr(row, "archived_at", None),
     }
@@ -225,6 +284,8 @@ def serialize_variant_finished_product_control_row(row: VariantProductFinishedPr
     return {
         "id": row.id,
         "ordered_test_id": row.ordered_test_id,
+        "test_order_id": row.ordered_test_id,
+        "label_control_id": row.id,
         "project_number": get_project_number_from_variant_sku(row.sku),
         "sku": row.sku,
         "name": row.name,
@@ -343,6 +404,151 @@ def create_default_variant_finished_product_control(
         product_verified_note=None,
         comment=None,
     )
+
+
+def match_variant_order_for_control(
+    control: VariantProductFinishedProductControl,
+    orders: list[VariantProductBatchTestOrder],
+    archived_orders: list[VariantProductBatchTestOrderArchive],
+) -> VariantProductBatchTestOrder | VariantProductBatchTestOrderArchive | None:
+    control_batch_number = (control.product_batch_number or "").strip()
+    for collection in (orders, archived_orders):
+        for order in collection:
+            if does_control_match_order(control, order):
+                return order
+    return None
+
+
+def ensure_variant_product_finished_product_control_links(db: Session) -> None:
+    orders = (
+        db.query(VariantProductBatchTestOrder)
+        .order_by(VariantProductBatchTestOrder.id.asc())
+        .all()
+    )
+    archived_orders = (
+        db.query(VariantProductBatchTestOrderArchive)
+        .order_by(VariantProductBatchTestOrderArchive.id.asc())
+        .all()
+    )
+    controls = (
+        db.query(VariantProductFinishedProductControl)
+        .order_by(VariantProductFinishedProductControl.id.asc())
+        .all()
+    )
+
+    changed = False
+    linked_order_ids = {control.ordered_test_id for control in controls if control.ordered_test_id is not None}
+
+    order_lookup = {order.id: order for order in orders}
+    archived_order_lookup = {
+        order.ordered_test_id: order
+        for order in archived_orders
+        if order.ordered_test_id is not None
+    }
+
+    for control in controls:
+        if control.ordered_test_id is None:
+            continue
+        linked_order = order_lookup.get(control.ordered_test_id) or archived_order_lookup.get(control.ordered_test_id)
+        if linked_order and does_control_match_order(control, linked_order):
+            continue
+        control.ordered_test_id = None
+        db.add(control)
+        changed = True
+
+    linked_order_ids = {control.ordered_test_id for control in controls if control.ordered_test_id is not None}
+
+    for archived_order in archived_orders:
+        if archived_order.ordered_test_id is None:
+            matching_control = next(
+                (
+                    control
+                    for control in controls
+                    if control.ordered_test_id is not None
+                    and control.sku == archived_order.sku
+                    and (control.product_batch_number or "").strip() == archived_order.batch_number
+                ),
+                None,
+            )
+            if matching_control:
+                archived_order.ordered_test_id = matching_control.ordered_test_id
+            else:
+                archived_order.ordered_test_id = archived_order.id
+            db.add(archived_order)
+            changed = True
+
+    for control in controls:
+        if control.ordered_test_id is not None:
+            continue
+        matched_order = match_variant_order_for_control(control, orders, archived_orders)
+        if not matched_order:
+            continue
+        control.ordered_test_id = get_variant_batch_row_test_order_id(matched_order)
+        control.laboratory_name = control.laboratory_name or matched_order.laboratory_name
+        control.asana_task_number = control.asana_task_number or matched_order.asana_task_number
+        linked_order_ids.add(control.ordered_test_id)
+        db.add(control)
+        changed = True
+
+    for order in orders:
+        if order.id in linked_order_ids:
+            continue
+        control = create_default_variant_finished_product_control(order)
+        db.add(control)
+        linked_order_ids.add(order.id)
+        changed = True
+
+    if changed:
+        db.commit()
+
+
+def get_variant_finished_product_control_id_map(
+    db: Session,
+    test_order_ids: list[int],
+) -> dict[int, int]:
+    normalized_ids = sorted({value for value in test_order_ids if value is not None})
+    if not normalized_ids:
+        return {}
+    rows = (
+        db.query(
+            VariantProductFinishedProductControl.ordered_test_id,
+            VariantProductFinishedProductControl.id,
+        )
+        .filter(VariantProductFinishedProductControl.ordered_test_id.in_(normalized_ids))
+        .order_by(
+            VariantProductFinishedProductControl.ordered_test_id.asc(),
+            VariantProductFinishedProductControl.id.desc(),
+        )
+        .all()
+    )
+    result: dict[int, int] = {}
+    for ordered_test_id, control_id in rows:
+        if ordered_test_id is not None and ordered_test_id not in result:
+            result[ordered_test_id] = control_id
+    return result
+
+
+def get_variant_finished_product_control_map(
+    db: Session,
+    test_order_ids: list[int],
+) -> dict[int, VariantProductFinishedProductControl]:
+    normalized_ids = sorted({value for value in test_order_ids if value is not None})
+    if not normalized_ids:
+        return {}
+    rows = (
+        db.query(VariantProductFinishedProductControl)
+        .filter(VariantProductFinishedProductControl.ordered_test_id.in_(normalized_ids))
+        .order_by(
+            VariantProductFinishedProductControl.ordered_test_id.asc(),
+            VariantProductFinishedProductControl.id.desc(),
+        )
+        .all()
+    )
+    result: dict[int, VariantProductFinishedProductControl] = {}
+    for row in rows:
+        if row.ordered_test_id is not None and row.ordered_test_id not in result:
+            result[row.ordered_test_id] = row
+    return result
 
 
 def serialize_database_value(value):
@@ -478,7 +684,13 @@ def format_date_for_pdf(value: datetime | str | None) -> str:
     return str(value)
 
 
-def build_coa_pdf(rows: list[VariantProductBatchTestOrder], details: list[ProductDetailedParameter], project_number: str) -> bytes:
+def build_coa_pdf(
+    rows: list[VariantProductBatchTestOrder],
+    details: list[ProductDetailedParameter],
+    project_number: str,
+    linked_document_names: list[str] | None = None,
+    conclusion_text: str | None = None,
+) -> bytes:
     buffer = BytesIO()
     doc = SimpleDocTemplate(
         buffer,
@@ -582,13 +794,31 @@ def build_coa_pdf(rows: list[VariantProductBatchTestOrder], details: list[Produc
 
     story.extend([
         Paragraph("<b>LINKED DOCUMENTS / DOKUMENTY ZWIĄZANE:</b>", section_style),
-        Spacer(1, 8 * mm),
+        Spacer(1, 3 * mm),
+    ])
+
+    document_names = linked_document_names or []
+    if document_names:
+        for document_name in document_names:
+            story.extend([
+                Paragraph(document_name, base_style),
+                Spacer(1, 1.5 * mm),
+            ])
+    else:
+        story.extend([
+            Paragraph("-", base_style),
+            Spacer(1, 1.5 * mm),
+        ])
+
+    story.extend([
+        Spacer(1, 3.5 * mm),
         Paragraph("<b>CONCLUSION / WNIOSEK:</b>", section_style),
         Spacer(1, 2 * mm),
         Paragraph(
-            (
-                f"The product meets the requirements of the product specification in accordance with the product sheet {project_number}.<br/>"
-                f"Produkt spełnia wymagania specyfikacji produktu zgodnie z kartą produktu {project_number}."
+            "<br/>".join(
+                line.strip()
+                for line in (conclusion_text or build_default_coa_conclusion(project_number)).splitlines()
+                if line.strip()
             ),
             base_style,
         ),
@@ -960,6 +1190,7 @@ def ensure_variant_product_batch_test_orders_schema() -> None:
         "product_verified": "VARCHAR(10)",
         "product_verified_note": "VARCHAR(2000)",
         "comment": "VARCHAR(2000)",
+        "linked_document_names": "VARCHAR(4000)",
         "control_saved_at": "TIMESTAMP WITH TIME ZONE",
     }
 
@@ -992,6 +1223,7 @@ def ensure_variant_product_batch_test_orders_archive_schema() -> None:
 
     statements: list[str] = []
     extra_columns = {
+        "ordered_test_id": "INTEGER",
         "production_date": "VARCHAR(50)",
         "expiry_date": "VARCHAR(50)",
         "planned_test_date": "VARCHAR(50)",
@@ -1013,6 +1245,7 @@ def ensure_variant_product_batch_test_orders_archive_schema() -> None:
         "qr_code_is_active_note": "VARCHAR(2000)",
         "package_contents_match_card_note": "VARCHAR(2000)",
         "product_verified_note": "VARCHAR(2000)",
+        "linked_document_names": "VARCHAR(4000)",
     }
 
     for column_name, column_type in extra_columns.items():
@@ -1386,6 +1619,7 @@ def startup_seed_settings():
         ensure_integration_settings_seed(db)
         ensure_main_products_seed(db)
         ensure_variant_products_seed(db)
+        ensure_variant_product_finished_product_control_links(db)
     finally:
         db.close()
 
@@ -1523,6 +1757,7 @@ async def import_database(
 
     db = SessionLocal()
     try:
+        ensure_variant_product_finished_product_control_links(db)
         apply_runtime_integration_settings(db)
     finally:
         db.close()
@@ -1735,13 +1970,21 @@ def get_variant_product_batch_test_orders(
     current_user: User = Depends(get_current_user),
 ):
     _ = current_user
+    ensure_variant_product_finished_product_control_links(db)
     rows = (
         db.query(VariantProductBatchTestOrder)
         .filter(VariantProductBatchTestOrder.workflow_status != "to_clarify")
         .order_by(VariantProductBatchTestOrder.batch_added_at.desc(), VariantProductBatchTestOrder.id.desc())
         .all()
     )
-    return [serialize_variant_batch_row(row) for row in rows]
+    control_map = get_variant_finished_product_control_map(db, [row.id for row in rows])
+    return [
+        serialize_variant_batch_row(
+            row,
+            label_control_id=getattr(control_map.get(row.id), "id", None),
+        )
+        for row in rows
+    ]
 
 
 @app.get("/api/variant-products/batches/to-clarify", response_model=list[VariantProductBatchTestOrderResponse])
@@ -1750,13 +1993,21 @@ def get_variant_product_batch_test_orders_to_clarify(
     current_user: User = Depends(get_current_user),
 ):
     _ = current_user
+    ensure_variant_product_finished_product_control_links(db)
     rows = (
         db.query(VariantProductBatchTestOrder)
         .filter(VariantProductBatchTestOrder.workflow_status == "to_clarify")
         .order_by(VariantProductBatchTestOrder.batch_added_at.desc(), VariantProductBatchTestOrder.id.desc())
         .all()
     )
-    return [serialize_variant_batch_row(row) for row in rows]
+    control_map = get_variant_finished_product_control_map(db, [row.id for row in rows])
+    return [
+        serialize_variant_batch_row(
+            row,
+            label_control_id=getattr(control_map.get(row.id), "id", None),
+        )
+        for row in rows
+    ]
 
 
 @app.get("/api/variant-products/batches/archive", response_model=list[VariantProductBatchTestOrderResponse])
@@ -1765,12 +2016,27 @@ def get_variant_product_batch_test_archive(
     current_user: User = Depends(get_current_user),
 ):
     _ = current_user
+    ensure_variant_product_finished_product_control_links(db)
     rows = (
         db.query(VariantProductBatchTestOrderArchive)
         .order_by(VariantProductBatchTestOrderArchive.archived_at.desc(), VariantProductBatchTestOrderArchive.id.desc())
         .all()
     )
-    return [serialize_variant_batch_row(row) for row in rows]
+    control_map = get_variant_finished_product_control_map(
+        db,
+        [row.ordered_test_id for row in rows if row.ordered_test_id is not None],
+    )
+    serialized_rows = []
+    for row in rows:
+        control = control_map.get(row.ordered_test_id) if row.ordered_test_id is not None else None
+        serialized = serialize_variant_batch_row(
+            row,
+            label_control_id=getattr(control, "id", None),
+        )
+        if control:
+            serialized["label_status"] = control.label_status
+        serialized_rows.append(serialized)
+    return serialized_rows
 
 
 @app.post("/api/variant-products/batches/ordered-tests", response_model=VariantProductBatchTestOrderResponse, status_code=status.HTTP_201_CREATED)
@@ -1823,7 +2089,12 @@ def create_variant_product_batch_test_order(
     if not existing_control:
         db.add(create_default_variant_finished_product_control(order))
         db.commit()
-    return serialize_variant_batch_row(order)
+        existing_control = (
+            db.query(VariantProductFinishedProductControl)
+            .filter(VariantProductFinishedProductControl.ordered_test_id == order.id)
+            .first()
+        )
+    return serialize_variant_batch_row(order, label_control_id=getattr(existing_control, "id", None))
 
 
 @app.patch("/api/variant-products/batches/ordered-tests/{order_id}", response_model=VariantProductBatchTestOrderResponse)
@@ -1858,7 +2129,12 @@ def update_variant_product_batch_test_order(
     db.add(order)
     db.commit()
     db.refresh(order)
-    return serialize_variant_batch_row(order)
+    control = (
+        db.query(VariantProductFinishedProductControl)
+        .filter(VariantProductFinishedProductControl.ordered_test_id == order.id)
+        .first()
+    )
+    return serialize_variant_batch_row(order, label_control_id=getattr(control, "id", None))
 
 
 @app.post("/api/variant-products/batches/archive", status_code=status.HTTP_201_CREATED)
@@ -1890,6 +2166,7 @@ def archive_variant_product_batch_test_orders(
     for row in rows:
         db.add(
             VariantProductBatchTestOrderArchive(
+                ordered_test_id=row.id,
                 sku=row.sku,
                 name=row.name,
                 ean=row.ean,
@@ -1941,6 +2218,7 @@ def archive_variant_product_batch_test_orders(
                 product_verified=row.product_verified,
                 product_verified_note=row.product_verified_note,
                 comment=row.comment,
+                linked_document_names=row.linked_document_names,
                 control_saved_at=row.control_saved_at,
                 archived_at=datetime.now(timezone.utc),
             )
@@ -1951,6 +2229,54 @@ def archive_variant_product_batch_test_orders(
 
     db.commit()
     return {"archived_count": len(rows)}
+
+
+@app.post("/api/variant-products/batches/documents", status_code=status.HTTP_200_OK)
+def save_variant_product_batch_documents(
+    payload: VariantProductBatchDocumentsRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _ = current_user
+
+    ids = sorted(set(payload.ids))
+    if not ids:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="ids are required",
+        )
+
+    document_names = []
+    for document_name in payload.document_names:
+        value = str(document_name or "").strip()
+        if value and value not in document_names:
+            document_names.append(value)
+
+    rows = (
+        db.query(VariantProductBatchTestOrder)
+        .filter(VariantProductBatchTestOrder.id.in_(ids))
+        .all()
+    )
+    if not rows:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No rows found to save documents",
+        )
+
+    for row in rows:
+        existing_names = parse_linked_document_names(row.linked_document_names)
+        merged_names = existing_names[:]
+        for document_name in document_names:
+            if document_name not in merged_names:
+                merged_names.append(document_name)
+        row.linked_document_names = serialize_linked_document_names(merged_names)
+        db.add(row)
+
+    db.commit()
+    return {
+        "updated_count": len(rows),
+        "document_names": document_names,
+    }
 
 
 @app.post("/api/variant-products/batches/coa")
@@ -2016,7 +2342,15 @@ def generate_variant_product_batch_coa(
             detail=f"No detailed parameters found for project {project_number}",
         )
 
-    pdf_bytes = build_coa_pdf(rows, details, project_number)
+    linked_document_names = []
+    for document_name in payload.linked_document_names:
+        value = str(document_name or "").strip()
+        if value and value not in linked_document_names:
+            linked_document_names.append(value)
+
+    conclusion_text = (payload.conclusion_text or "").strip() or build_default_coa_conclusion(project_number)
+
+    pdf_bytes = build_coa_pdf(rows, details, project_number, linked_document_names, conclusion_text)
     filename = f"coa_{project_number}_{datetime.now().strftime('%Y%m%d')}.pdf"
     return StreamingResponse(
         BytesIO(pdf_bytes),
@@ -2031,6 +2365,7 @@ def get_variant_product_finished_product_controls(
     current_user: User = Depends(get_current_user),
 ):
     _ = current_user
+    ensure_variant_product_finished_product_control_links(db)
     rows = (
         db.query(VariantProductFinishedProductControl)
         .order_by(VariantProductFinishedProductControl.created_at.desc(), VariantProductFinishedProductControl.id.desc())
@@ -2167,10 +2502,17 @@ def create_variant_product_finished_product_control(
         .first()
     )
 
-    order_comment = (payload.comment or "").strip() or None
-
     if order:
-        for key, value in fields.items():
+        immutable_order_fields = {
+            "sku": order.sku,
+            "name": order.name,
+            "ean": order.ean,
+        }
+        persisted_fields = {
+            **fields,
+            **immutable_order_fields,
+        }
+        for key, value in persisted_fields.items():
             setattr(order, key, value)
         for note_field in note_inputs:
             setattr(order, note_field, None)
@@ -2178,6 +2520,8 @@ def create_variant_product_finished_product_control(
         order.batch_number = fields["product_batch_number"]
         order.comment = aggregated_comment
         order.control_saved_at = datetime.utcnow()
+    else:
+        persisted_fields = fields
 
     control = (
         db.query(VariantProductFinishedProductControl)
@@ -2187,7 +2531,14 @@ def create_variant_product_finished_product_control(
     if not control:
         control = create_default_variant_finished_product_control(order) if order else VariantProductFinishedProductControl()
 
-    for key, value in fields.items():
+    if order:
+        persisted_fields = {
+            **persisted_fields,
+            "sku": order.sku,
+            "name": order.name,
+            "ean": order.ean,
+        }
+    for key, value in persisted_fields.items():
         setattr(control, key, value)
     for note_field in note_inputs:
         setattr(control, note_field, None)

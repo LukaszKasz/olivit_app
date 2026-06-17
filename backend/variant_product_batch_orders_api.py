@@ -25,13 +25,22 @@ class VariantProductBatchArchiveRequest(BaseModel):
     ids: list[int]
 
 
+class VariantProductBatchDocumentsRequest(BaseModel):
+    ids: list[int]
+    document_names: list[str]
+
+
 class VariantProductBatchCoARequest(BaseModel):
     ids: list[int]
     detail_ids: list[int]
+    linked_document_names: list[str] = []
+    conclusion_text: str = ""
 
 
 class VariantProductBatchTestOrderResponse(BaseModel):
     id: int
+    test_order_id: Optional[int] = None
+    label_control_id: Optional[int] = None
     sku: str
     project_number: Optional[str] = None
     name: str
@@ -70,6 +79,7 @@ class VariantProductBatchTestOrderResponse(BaseModel):
     package_contents_match_card: Optional[str] = None
     product_verified: Optional[str] = None
     comment: Optional[str] = None
+    linked_document_names: list[str] = []
     control_saved_at: Optional[datetime] = None
     archived_at: Optional[datetime] = None
 
