@@ -1466,14 +1466,14 @@ function VariantProductBatchOrderedTestsPage({
 
             {coaDialog.open && (
                 <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/40 p-4 md:p-8">
-                    <div className="w-full max-w-5xl rounded-3xl bg-white shadow-2xl">
+                    <div className="flex max-h-[calc(100vh-48px)] w-full max-w-5xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl">
                         <div className="border-b border-slate-200 px-6 py-5">
                             <h2 className="text-xl font-semibold text-slate-900">Generuj CoA</h2>
                             <p className="mt-1 text-sm text-slate-600">
                                 Wybierz informacje szczegółowe dla projektu {coaDialog.projectNumber}.
                             </p>
                         </div>
-                        <div className="px-6 py-5">
+                        <div className="flex-1 overflow-y-auto px-6 py-5">
                             {coaDialog.loading ? (
                                 <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
                                     Ładowanie informacji szczegółowych...
@@ -1588,7 +1588,7 @@ function VariantProductBatchOrderedTestsPage({
                                 </>
                             )}
                         </div>
-                        <div className="flex justify-end gap-3 border-t border-slate-200 px-6 py-5">
+                        <div className="sticky bottom-0 flex justify-end gap-3 border-t border-slate-200 bg-white px-6 py-5">
                             <button
                                 type="button"
                                 onClick={closeCoaDialog}
