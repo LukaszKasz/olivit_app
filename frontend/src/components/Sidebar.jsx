@@ -18,22 +18,41 @@ function Sidebar({ collapsed, onToggle }) {
             : 'text-slate-300 hover:bg-slate-700/60 hover:text-white'}`;
 
     const productMenuSections = [
-        [
-            { to: '/main-products', label: 'Bulk / Baza produktów' },
-            { to: '/main-products/ordered-tests', label: 'Bulk / Baza produktów - Badania zlecone' },
-            { to: '/main-products/to-pack', label: 'Bulk / Baza produktów - Do spakowania' },
-            { to: '/main-products/to-clarify', label: 'Bulk / Baza produktów - Do wyjaśnienia' },
-            { to: '/main-products/archive', label: 'Bulk / Baza produktów - Archiwum' },
-        ],
-        [
-            { to: '/product-variants', label: 'Produkty spakowane / Warianty' },
-            { to: '/product-variants/batches/ordered-tests', label: 'Produkty spakowane / Warianty - Badania zlecone' },
-            { to: '/product-variants/batches/to-clarify', label: 'Produkty spakowane / Warianty - Do wyjaśnienia' },
-            { to: '/product-variants/finished-product-control', label: 'Produkty spakowane / Warianty - Kontrola produktu gotowego - Bieżące' },
-            { to: '/product-variants/finished-product-control/incorrect', label: 'Produkty spakowane / Warianty - Kontrola produktu gotowego - Błędne' },
-            { to: '/product-variants/finished-product-control/correct', label: 'Produkty spakowane / Warianty - Kontrola produktu gotowego - Poprawne' },
-            { to: '/product-variants/batches/archive', label: 'Produkty spakowane / Warianty - Badania ukończone' },
-        ],
+        {
+            title: 'Bull - baza produktów',
+            groups: [
+                {
+                    items: [
+                        { to: '/main-products', label: 'Produkty' },
+                        { to: '/main-products/ordered-tests', label: 'Badania zlecone' },
+                        { to: '/main-products/to-pack', label: 'Do spakowania' },
+                        { to: '/main-products/to-clarify', label: 'Do wyjaśnienia' },
+                        { to: '/main-products/archive', label: 'Archiwum' },
+                    ],
+                },
+            ],
+        },
+        {
+            title: 'Produkty spakowane',
+            groups: [
+                {
+                    items: [
+                        { to: '/product-variants', label: 'Produkty spakowane' },
+                        { to: '/product-variants/batches/ordered-tests', label: 'Badania zlecone' },
+                        { to: '/product-variants/batches/to-clarify', label: 'Do wyjaśnienia' },
+                        { to: '/product-variants/batches/archive', label: 'Badania ukończone' },
+                    ],
+                },
+                {
+                    title: 'Kontrola produktu gotowego',
+                    items: [
+                        { to: '/product-variants/finished-product-control', label: 'Bieżące' },
+                        { to: '/product-variants/finished-product-control/incorrect', label: 'Błędne' },
+                        { to: '/product-variants/finished-product-control/correct', label: 'Poprawne' },
+                    ],
+                },
+            ],
+        },
     ];
 
     return (
@@ -62,14 +81,28 @@ function Sidebar({ collapsed, onToggle }) {
             {/* Top navigation */}
             <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
                 {productMenuSections.map((section, sectionIndex) => (
-                    <div key={section[0].to} className={sectionIndex > 0 ? 'mt-3 border-t border-slate-700/50 pt-3' : ''}>
-                        {section.map((item) => (
-                            <NavLink key={item.to} to={item.to} end className={navLinkClass} title={item.label}>
-                                <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7h16M4 12h16M4 17h16" />
-                                </svg>
-                                {!collapsed && <span className="leading-5">{item.label}</span>}
-                            </NavLink>
+                    <div key={section.groups[0].items[0].to} className={sectionIndex > 0 ? 'mt-3 border-t border-slate-700/50 pt-3' : ''}>
+                        {!collapsed && section.title ? (
+                            <p className="px-4 pb-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                                {section.title}
+                            </p>
+                        ) : null}
+                        {section.groups.map((group) => (
+                            <div key={group.title || group.items[0].to} className={!collapsed && group.title ? 'mt-2' : ''}>
+                                {!collapsed && group.title ? (
+                                    <p className="px-4 pb-2 pt-1 text-xs font-medium uppercase tracking-[0.14em] text-slate-400">
+                                        {group.title}
+                                    </p>
+                                ) : null}
+                                {group.items.map((item) => (
+                                    <NavLink key={item.to} to={item.to} end className={navLinkClass} title={item.label}>
+                                        <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7h16M4 12h16M4 17h16" />
+                                        </svg>
+                                        {!collapsed && <span className="leading-5">{item.label}</span>}
+                                    </NavLink>
+                                ))}
+                            </div>
                         ))}
                     </div>
                 ))}
