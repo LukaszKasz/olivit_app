@@ -32,10 +32,12 @@ function VariantProductsPage() {
         open: false,
         saving: false,
         laboratory: '',
+        asanaTaskNumber: '',
         productionDate: '',
         expiryDate: '',
         plannedTestDate: '',
-        rows: [],
+        targetRow: null,
+        relatedRows: [],
     });
 
     useEffect(() => {
@@ -182,28 +184,65 @@ function VariantProductsPage() {
     };
 
     const openBulkBatchDialog = () => {
-        const selectedProducts = products.filter((product) => selectedProductIds.includes(product.id));
-        if (selectedProducts.length === 0) {
-            return;
-        }
+        const run = async () => {
+            const selectedProducts = products.filter((product) => selectedProductIds.includes(product.id));
+            if (selectedProducts.length === 0) {
+                return;
+            }
+            if (selectedProducts.length > 1) {
+                setError('Do zlecenia badań zaznacz tylko jeden produkt.');
+                setSuccess('');
+                return;
+            }
 
-        setBulkBatchDialog({
-            open: true,
-            saving: false,
-            laboratory: '',
-            productionDate: '',
-            expiryDate: '',
-            plannedTestDate: '',
-            rows: selectedProducts.map((product) => ({
-                id: product.id,
-                projectNumber: product.project_number || '',
-                sku: product.sku,
-                name: product.name,
-                ean: product.ean,
-                batchNumber: '',
+            const [selectedProduct] = selectedProducts;
+            const selectedProjectNumber = (selectedProduct.project_number || '').trim();
+            let relatedProducts = [];
+
+            if (selectedProjectNumber) {
+                try {
+                    const response = await variantProductsAPI.getProducts(selectedProjectNumber, 1, 100);
+                    const fetchedProducts = Array.isArray(response?.items) ? response.items : [];
+                    relatedProducts = fetchedProducts.filter(
+                        (product) => product.id !== selectedProduct.id && (product.project_number || '').trim() === selectedProjectNumber
+                    );
+                } catch {
+                    relatedProducts = products.filter(
+                        (product) => product.id !== selectedProduct.id && (product.project_number || '').trim() === selectedProjectNumber
+                    );
+                }
+            }
+
+            setBulkBatchDialog({
+                open: true,
+                saving: false,
+                laboratory: '',
                 asanaTaskNumber: '',
-            })),
-        });
+                productionDate: '',
+                expiryDate: '',
+                plannedTestDate: '',
+                targetRow: {
+                    id: selectedProduct.id,
+                    projectNumber: selectedProduct.project_number || '',
+                    sku: selectedProduct.sku,
+                    name: selectedProduct.name,
+                    ean: selectedProduct.ean,
+                    batchNumber: '',
+                },
+                relatedRows: relatedProducts.map((product) => ({
+                    id: product.id,
+                    projectNumber: product.project_number || '',
+                    sku: product.sku,
+                    name: product.name,
+                    ean: product.ean,
+                    batchNumber: '',
+                })),
+            });
+            setError('');
+            setSuccess('');
+        };
+
+        run();
     };
 
     const closeBulkBatchDialog = () => {
@@ -215,65 +254,56 @@ function VariantProductsPage() {
             open: false,
             saving: false,
             laboratory: '',
+            asanaTaskNumber: '',
             productionDate: '',
             expiryDate: '',
             plannedTestDate: '',
-            rows: [],
+            targetRow: null,
+            relatedRows: [],
         });
     };
 
-    const updateBulkBatchNumber = (productId, value) => {
+    const updateBulkBatchNumber = (value) => {
         setBulkBatchDialog((current) => ({
             ...current,
-            rows: current.rows.map((row) =>
-                row.id === productId
-                    ? { ...row, batchNumber: value }
-                    : row
-            ),
-        }));
-    };
-
-    const updateBulkAsanaTaskNumber = (productId, value) => {
-        setBulkBatchDialog((current) => ({
-            ...current,
-            rows: current.rows.map((row) =>
-                row.id === productId
-                    ? { ...row, asanaTaskNumber: value }
-                    : row
-            ),
+            targetRow: current.targetRow
+                ? { ...current.targetRow, batchNumber: value }
+                : null,
         }));
     };
 
     const handleBulkBatchSave = async () => {
+        if (!bulkBatchDialog.targetRow) {
+            return;
+        }
+
         try {
             setBulkBatchDialog((current) => ({ ...current, saving: true }));
-            await Promise.all(
-                bulkBatchDialog.rows.map((row) =>
-                    variantProductsAPI.orderBatchTests({
-                        sku: row.sku,
-                        name: row.name,
-                        ean: row.ean,
-                        laboratory_name: bulkBatchDialog.laboratory,
-                        batch_number: row.batchNumber,
-                        asana_task_number: row.asanaTaskNumber,
-                        production_date: bulkBatchDialog.productionDate,
-                        expiry_date: bulkBatchDialog.expiryDate,
-                        planned_test_date: bulkBatchDialog.plannedTestDate,
-                    })
-                )
-            );
+            await variantProductsAPI.orderBatchTests({
+                sku: bulkBatchDialog.targetRow.sku,
+                name: bulkBatchDialog.targetRow.name,
+                ean: bulkBatchDialog.targetRow.ean,
+                laboratory_name: bulkBatchDialog.laboratory,
+                batch_number: bulkBatchDialog.targetRow.batchNumber,
+                asana_task_number: bulkBatchDialog.asanaTaskNumber,
+                production_date: bulkBatchDialog.productionDate,
+                expiry_date: bulkBatchDialog.expiryDate,
+                planned_test_date: bulkBatchDialog.plannedTestDate,
+            });
 
-            setSuccess(`Zlecono badania dla ${bulkBatchDialog.rows.length} zaznaczonych wariantów.`);
+            setSuccess(`Zlecono badania dla wariantu ${bulkBatchDialog.targetRow.sku}.`);
             setError('');
             setSelectedProductIds([]);
             setBulkBatchDialog({
                 open: false,
                 saving: false,
                 laboratory: '',
+                asanaTaskNumber: '',
                 productionDate: '',
                 expiryDate: '',
                 plannedTestDate: '',
-                rows: [],
+                targetRow: null,
+                relatedRows: [],
             });
         } catch (err) {
             setError(err?.response?.data?.detail || err.message || 'Nie udało się zlecić badań dla zaznaczonych wariantów.');
@@ -281,12 +311,12 @@ function VariantProductsPage() {
         }
     };
 
-    const isBulkBatchSaveDisabled = bulkBatchDialog.rows.length === 0
+    const isBulkBatchSaveDisabled = !bulkBatchDialog.targetRow
         || !bulkBatchDialog.laboratory
         || !bulkBatchDialog.productionDate.trim()
         || !bulkBatchDialog.expiryDate.trim()
         || !bulkBatchDialog.plannedTestDate.trim()
-        || bulkBatchDialog.rows.some((row) => !row.batchNumber.trim())
+        || !bulkBatchDialog.targetRow.batchNumber.trim()
         || bulkBatchDialog.saving;
 
     return (
@@ -543,9 +573,6 @@ function VariantProductsPage() {
                     <div className="w-full max-w-5xl rounded-3xl border border-slate-200 bg-white shadow-2xl">
                         <div className="border-b border-slate-200 px-6 py-5">
                             <h2 className="text-2xl font-semibold text-slate-900">Zleć badania</h2>
-                            <p className="mt-2 text-sm text-slate-600">
-                                Wybierz laboratorium raz, uzupełnij daty wspólne dla wszystkich pozycji i wpisz numer serii dla każdej linii osobno.
-                            </p>
                         </div>
 
                         <div className="max-h-[65vh] overflow-auto px-6 py-5">
@@ -567,6 +594,29 @@ function VariantProductsPage() {
                                             </option>
                                         ))}
                                     </select>
+                                    <div className="mt-4 grid gap-4 md:grid-cols-2">
+                                        <div>
+                                            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                                                Numer projektu
+                                            </div>
+                                            <div className="mt-3 rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900">
+                                                {bulkBatchDialog.targetRow?.projectNumber || '—'}
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-semibold uppercase tracking-[0.18em] text-slate-500" htmlFor="bulk-variant-asana-task-number">
+                                                Numer w Asana
+                                            </label>
+                                            <input
+                                                id="bulk-variant-asana-task-number"
+                                                type="text"
+                                                value={bulkBatchDialog.asanaTaskNumber}
+                                                onChange={(event) => setBulkBatchDialog((current) => ({ ...current, asanaTaskNumber: event.target.value }))}
+                                                placeholder="Np. 1234567890"
+                                                className="mt-3 w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-500"
+                                            />
+                                        </div>
+                                    </div>
                                 </div>
                                 <div>
                                     <div className="block text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
@@ -576,10 +626,9 @@ function VariantProductsPage() {
                                         <label className="block">
                                             <span className="text-sm font-medium text-slate-900">Data produkcji</span>
                                             <input
-                                                type="text"
+                                                type="date"
                                                 value={bulkBatchDialog.productionDate}
                                                 onChange={(event) => setBulkBatchDialog((current) => ({ ...current, productionDate: event.target.value }))}
-                                                placeholder="dd.mm.rrrr"
                                                 className="mt-2 w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-500"
                                             />
                                             <span className="mt-2 block text-xs leading-5 text-slate-500">
@@ -589,10 +638,9 @@ function VariantProductsPage() {
                                         <label className="block">
                                             <span className="text-sm font-medium text-slate-900">Data ważności</span>
                                             <input
-                                                type="text"
+                                                type="date"
                                                 value={bulkBatchDialog.expiryDate}
                                                 onChange={(event) => setBulkBatchDialog((current) => ({ ...current, expiryDate: event.target.value }))}
-                                                placeholder="dd.mm.rrrr"
                                                 className="mt-2 w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-500"
                                             />
                                             <span className="mt-2 block text-xs leading-5 text-slate-500">
@@ -602,10 +650,9 @@ function VariantProductsPage() {
                                         <label className="block">
                                             <span className="text-sm font-medium text-slate-900">Plan. realizacji</span>
                                             <input
-                                                type="text"
+                                                type="date"
                                                 value={bulkBatchDialog.plannedTestDate}
                                                 onChange={(event) => setBulkBatchDialog((current) => ({ ...current, plannedTestDate: event.target.value }))}
-                                                placeholder="dd.mm.rrrr"
                                                 className="mt-2 w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-500"
                                             />
                                             <span className="mt-2 block text-xs leading-5 text-slate-500">
@@ -616,45 +663,77 @@ function VariantProductsPage() {
                                 </div>
                             </div>
 
-                            <div className="overflow-hidden rounded-3xl border border-slate-200">
-                                <table className="w-full text-left text-sm">
-                                    <thead className="bg-slate-50 text-xs uppercase tracking-[0.18em] text-slate-500">
-                                        <tr>
-                                            <th className="px-4 py-4">Numer projektu</th>
-                                            <th className="px-4 py-4">Numer wariantu</th>
-                                            <th className="px-4 py-4">Nazwa</th>
-                                            <th className="px-4 py-4">Numer w Asana</th>
-                                            <th className="px-4 py-4">Numer serii</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {bulkBatchDialog.rows.map((row) => (
-                                            <tr key={row.id} className="border-t border-slate-100">
-                                                <td className="whitespace-nowrap px-4 py-4 text-slate-700">{row.projectNumber || '—'}</td>
-                                                <td className="whitespace-nowrap px-4 py-4 font-semibold text-slate-900">{row.sku}</td>
-                                                <td className="px-4 py-4 text-slate-700">{row.name}</td>
-                                                <td className="px-4 py-4">
+                            <div className="space-y-6">
+                                <div className="rounded-3xl border border-slate-200">
+                                    <div className="border-b border-slate-200 bg-slate-50 px-5 py-4">
+                                        <h3 className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">Produkt do badań</h3>
+                                    </div>
+                                    {bulkBatchDialog.targetRow && (
+                                        <div className="px-5 py-5">
+                                            <div className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
+                                                <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,2fr)_minmax(220px,1fr)] gap-3 border-b border-slate-200 px-4 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                                                    <div>Numer wariantu</div>
+                                                    <div>Nazwa</div>
+                                                    <div>Numer serii</div>
+                                                </div>
+                                                <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,2fr)_minmax(220px,1fr)] gap-3 px-4 py-3 text-sm text-slate-700">
+                                                    <div className="font-semibold text-slate-900">{bulkBatchDialog.targetRow.sku}</div>
+                                                    <div>{bulkBatchDialog.targetRow.name}</div>
                                                     <input
                                                         type="text"
-                                                        value={row.asanaTaskNumber}
-                                                        onChange={(event) => updateBulkAsanaTaskNumber(row.id, event.target.value)}
-                                                        placeholder="Np. 1234567890"
-                                                        className="w-full min-w-[12rem] rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-500 focus:bg-white"
-                                                    />
-                                                </td>
-                                                <td className="px-4 py-4">
-                                                    <input
-                                                        type="text"
-                                                        value={row.batchNumber}
-                                                        onChange={(event) => updateBulkBatchNumber(row.id, event.target.value)}
+                                                        value={bulkBatchDialog.targetRow.batchNumber}
+                                                        onChange={(event) => updateBulkBatchNumber(event.target.value)}
                                                         placeholder="Wpisz serię"
-                                                        className="w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-500 focus:bg-white"
+                                                        className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-500"
                                                     />
-                                                </td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div className="rounded-3xl border border-slate-200">
+                                    <div className="border-b border-slate-200 bg-slate-50 px-5 py-4">
+                                        <h3 className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">Produkty do kontroli Produktu gotowego</h3>
+                                    </div>
+                                    {bulkBatchDialog.relatedRows.length === 0 ? (
+                                        <div className="px-5 py-8 text-sm text-slate-500">
+                                            Brak innych widocznych wariantów z tym samym numerem projektu.
+                                        </div>
+                                    ) : (
+                                        <div className="px-5 py-5">
+                                            <div className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
+                                                <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,2fr)_minmax(220px,1fr)] gap-3 border-b border-slate-200 px-4 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                                                    <div>Numer wariantu</div>
+                                                    <div>Nazwa</div>
+                                                    <div>Numer serii</div>
+                                                </div>
+                                                <div className="divide-y divide-slate-200">
+                                                    {bulkBatchDialog.relatedRows.map((row) => (
+                                                        <div key={row.id} className="grid grid-cols-[minmax(0,1fr)_minmax(0,2fr)_minmax(220px,1fr)] gap-3 px-4 py-3 text-sm text-slate-700">
+                                                            <div className="font-semibold text-slate-900">{row.sku}</div>
+                                                            <div>{row.name}</div>
+                                                            <input
+                                                                type="text"
+                                                                value={row.batchNumber}
+                                                                onChange={(event) => setBulkBatchDialog((current) => ({
+                                                                    ...current,
+                                                                    relatedRows: current.relatedRows.map((relatedRow) => (
+                                                                        relatedRow.id === row.id
+                                                                            ? { ...relatedRow, batchNumber: event.target.value }
+                                                                            : relatedRow
+                                                                    )),
+                                                                }))}
+                                                                placeholder="Wpisz serię"
+                                                                className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-500"
+                                                            />
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
                             </div>
                         </div>
 

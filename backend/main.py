@@ -1856,6 +1856,7 @@ def get_variant_products(
         pattern = f"%{q.strip()}%"
         query = query.filter(
             or_(
+                VariantProduct.project_number.ilike(pattern),
                 VariantProduct.sku.ilike(pattern),
                 VariantProduct.name.ilike(pattern),
                 VariantProduct.ean.ilike(pattern),
