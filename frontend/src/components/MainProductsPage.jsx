@@ -14,6 +14,8 @@ function MainProductsPage({
         product: null,
         batchNumber: '',
         asanaTaskNumber: '',
+        testCost: '',
+        poNumber: '',
         productionDate: '',
         expiryDate: '',
         plannedTestDate: '',
@@ -139,6 +141,8 @@ function MainProductsPage({
                     laboratory_name: orderDialog.laboratory || undefined,
                     batch_number: orderDialog.batchNumber,
                     asana_task_number: orderDialog.asanaTaskNumber || undefined,
+                    test_cost: orderDialog.testCost || undefined,
+                    po_number: orderDialog.poNumber || undefined,
                     production_date: orderDialog.productionDate || undefined,
                     expiry_date: orderDialog.expiryDate || undefined,
                     planned_test_date: orderDialog.plannedTestDate || undefined,
@@ -460,6 +464,32 @@ function MainProductsPage({
                                 <p className="mt-2 text-xs text-slate-500">
                                     Numer zadania lub referencji z Asany.
                                 </p>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-semibold uppercase tracking-[0.18em] text-slate-500" htmlFor="main-product-test-cost">
+                                    Koszt badania
+                                </label>
+                                <input
+                                    id="main-product-test-cost"
+                                    type="text"
+                                    value={orderDialog.testCost}
+                                    onChange={(event) => setOrderDialog((prev) => ({ ...prev, testCost: event.target.value }))}
+                                    placeholder="Np. 350 PLN"
+                                    className="mt-3 w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-500 focus:bg-white"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-semibold uppercase tracking-[0.18em] text-slate-500" htmlFor="main-product-po-number">
+                                    Numer PO
+                                </label>
+                                <input
+                                    id="main-product-po-number"
+                                    type="text"
+                                    value={orderDialog.poNumber}
+                                    onChange={(event) => setOrderDialog((prev) => ({ ...prev, poNumber: event.target.value }))}
+                                    placeholder="Np. PO-12345"
+                                    className="mt-3 w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-500 focus:bg-white"
+                                />
                             </div>
                         </div>
 

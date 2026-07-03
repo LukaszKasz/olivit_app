@@ -39,6 +39,16 @@ function App() {
                         element={<MainProductsPage title="Bulk / Baza produktów" />}
                     />
                     <Route
+                        path="/main-products/all"
+                        element={
+                            <MainProductOrderedTestsPage
+                                title="Bull - baza produktów - Wszystkie"
+                                description="Widok prezentuje wszystkie pozycje produktów głównych wraz z ich aktualnym statusem."
+                                viewMode="all"
+                            />
+                        }
+                    />
+                    <Route
                         path="/main-products/to-pack"
                         element={
                             <MainProductOrderedTestsPage
@@ -60,6 +70,16 @@ function App() {
                         }
                     />
                     <Route
+                        path="/main-products/released"
+                        element={
+                            <MainProductOrderedTestsPage
+                                title="Bulk / Baza produktów - Zwolnione"
+                                description="Widok prezentuje zwolnione produkty główne."
+                                viewMode="released"
+                            />
+                        }
+                    />
+                    <Route
                         path="/main-products/archive"
                         element={
                             <MainProductOrderedTestsPage
@@ -72,12 +92,32 @@ function App() {
                     <Route path="/product-variants" element={<VariantProductsPage />} />
                     <Route path="/product-variants/batches/ordered-tests" element={<VariantProductBatchOrderedTestsPage />} />
                     <Route
+                        path="/product-variants/batches/all"
+                        element={
+                            <VariantProductBatchOrderedTestsPage
+                                title="Produkty spakowane / Warianty - Wszystkie"
+                                description="Widok prezentuje wszystkie pozycje wariantów wraz z ich aktualnym statusem."
+                                viewMode="all"
+                            />
+                        }
+                    />
+                    <Route
                         path="/product-variants/batches/to-clarify"
                         element={
                             <VariantProductBatchOrderedTestsPage
                                 title="Produkty spakowane / Warianty - Do wyjaśnienia"
                                 description="Widok prezentuje partie wariantów wymagające dodatkowego wyjaśnienia wraz z notatkami."
                                 viewMode="to_clarify"
+                            />
+                        }
+                    />
+                    <Route
+                        path="/product-variants/batches/released"
+                        element={
+                            <VariantProductBatchOrderedTestsPage
+                                title="Produkty spakowane / Warianty - Do zwolnienia"
+                                description="Widok prezentuje partie wariantów oczekujące na zwolnienie."
+                                viewMode="released"
                             />
                         }
                     />
@@ -120,8 +160,18 @@ function App() {
                         path="/product-variants/batches/archive"
                         element={
                             <VariantProductBatchOrderedTestsPage
-                                title="Produkty spakowane / Warianty - Badania ukończone"
-                                description="Dane pobierane z tabeli archiwum badań ukończonych dla wariantów w bazie PostgreSQL."
+                                title="Produkty spakowane / Warianty - Do zwolnienia warunkowe"
+                                description="Widok prezentuje partie wariantów oczekujące na zwolnienie warunkowe."
+                                archiveMode
+                            />
+                        }
+                    />
+                    <Route
+                        path="/product-variants/batches/archive-history"
+                        element={
+                            <VariantProductBatchOrderedTestsPage
+                                title="Produkty spakowane / Warianty - Archiwum"
+                                description="Widok archiwalnych pozycji dla wariantów produktów."
                                 archiveMode
                             />
                         }

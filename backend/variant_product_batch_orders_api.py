@@ -14,11 +14,51 @@ class VariantProductBatchTestOrderCreate(BaseModel):
     production_date: Optional[str] = None
     expiry_date: Optional[str] = None
     planned_test_date: Optional[str] = None
+    test_cost: Optional[str] = None
+    po_number: Optional[str] = None
+
+
+class VariantProductBatchTestOrderBulkItem(BaseModel):
+    sku: str
+    name: str
+    ean: str
+    batch_number: str
+
+
+class VariantProductBatchTestOrderBulkCreate(BaseModel):
+    laboratory_name: Optional[str] = None
+    asana_task_number: Optional[str] = None
+    production_date: Optional[str] = None
+    expiry_date: Optional[str] = None
+    planned_test_date: Optional[str] = None
+    test_cost: Optional[str] = None
+    po_number: Optional[str] = None
+    items: list[VariantProductBatchTestOrderBulkItem]
 
 
 class VariantProductBatchTestOrderUpdate(BaseModel):
     workflow_status: Optional[str] = None
     clarification_note: Optional[str] = None
+    laboratory_name: Optional[str] = None
+    batch_number: Optional[str] = None
+    asana_task_number: Optional[str] = None
+    production_date: Optional[str] = None
+    expiry_date: Optional[str] = None
+    planned_test_date: Optional[str] = None
+    test_cost: Optional[str] = None
+    po_number: Optional[str] = None
+
+
+class VariantProductBatchRetestRequest(BaseModel):
+    order_id: int
+    laboratory_name: str
+    batch_number: str
+    asana_task_number: Optional[str] = None
+    production_date: Optional[str] = None
+    expiry_date: Optional[str] = None
+    planned_test_date: Optional[str] = None
+    test_cost: Optional[str] = None
+    po_number: Optional[str] = None
 
 
 class VariantProductBatchArchiveRequest(BaseModel):
@@ -40,6 +80,7 @@ class VariantProductBatchCoARequest(BaseModel):
 class VariantProductBatchTestOrderResponse(BaseModel):
     id: int
     test_order_id: Optional[int] = None
+    original_test_order_id: Optional[int] = None
     label_control_id: Optional[int] = None
     sku: str
     project_number: Optional[str] = None
@@ -53,6 +94,8 @@ class VariantProductBatchTestOrderResponse(BaseModel):
     production_date: Optional[str] = None
     expiry_date: Optional[str] = None
     planned_test_date: Optional[str] = None
+    test_cost: Optional[str] = None
+    po_number: Optional[str] = None
     workflow_status: Optional[str] = None
     clarification_note: Optional[str] = None
     label_status: Optional[str] = None

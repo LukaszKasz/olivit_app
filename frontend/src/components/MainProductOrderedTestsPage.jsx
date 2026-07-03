@@ -17,6 +17,10 @@ const STATUS_META = {
         label: 'Do wyjaśnienia',
         badgeClassName: 'bg-rose-100 text-rose-800',
     },
+    released: {
+        label: 'Zwolnione',
+        badgeClassName: 'bg-emerald-100 text-emerald-800',
+    },
     archive: {
         label: 'Archiwum',
         badgeClassName: 'bg-slate-200 text-slate-800',
@@ -26,6 +30,7 @@ const STATUS_META = {
 const MOVE_OPTIONS = [
     { value: 'ordered_tests', label: 'Badania zlecone', path: '/main-products/ordered-tests' },
     { value: 'to_pack', label: 'Do spakowania', path: '/main-products/to-pack' },
+    { value: 'released', label: 'Zwolnione', path: '/main-products/released' },
     { value: 'archive', label: 'Archiwum', path: '/main-products/archive' },
 ];
 
@@ -84,10 +89,13 @@ function MainProductOrderedTestsPage({
         fetchOrders();
     }, []);
 
-    const filteredOrders = useMemo(
-        () => orders.filter((order) => (order.workflow_status || 'ordered_tests') === viewMode),
-        [orders, viewMode]
-    );
+    const filteredOrders = useMemo(() => {
+        if (viewMode === 'all') {
+            return orders;
+        }
+
+        return orders.filter((order) => (order.workflow_status || 'ordered_tests') === viewMode);
+    }, [orders, viewMode]);
 
     const isPlannedTestDateOverdue = (plannedTestDate) => {
         if (!plannedTestDate) {
@@ -123,17 +131,17 @@ function MainProductOrderedTestsPage({
         }
     };
 
-    const handleMoveToArchive = async (order) => {
+    const handleMoveToReleased = async (order) => {
         try {
             const updatedOrder = await mainProductsAPI.updateOrderedTest(order.id, {
-                workflow_status: 'archive',
+                workflow_status: 'released',
             });
             replaceOrderInState(updatedOrder);
-            setSuccess(`Przeniesiono ${order.project_number} do zakładki Archiwum.`);
+            setSuccess(`Przeniesiono ${order.project_number} do zakładki Zwolnione.`);
             setError('');
-            navigate('/main-products/archive');
+            navigate('/main-products/released');
         } catch (err) {
-            setError(err?.response?.data?.detail || err.message || 'Nie udało się przenieść pozycji do Archiwum.');
+            setError(err?.response?.data?.detail || err.message || 'Nie udało się przenieść pozycji do zakładki Zwolnione.');
         }
     };
 
@@ -350,6 +358,8 @@ function MainProductOrderedTestsPage({
                             <tr>
                                 <th className="px-6 py-4">Numer projektu</th>
                                 <th className="px-6 py-4">Numer Asana</th>
+                                <th className="px-6 py-4">Numer PO</th>
+                                <th className="px-6 py-4">Koszt badania</th>
                                 <th className="px-6 py-4">Nazwa projektu / produktu</th>
                                 <th className="px-6 py-4">Laboratorium</th>
                                 <th className="px-6 py-4">Numer serii</th>
@@ -364,13 +374,13 @@ function MainProductOrderedTestsPage({
                         <tbody>
                             {loading ? (
                                 <tr className="border-t border-slate-100">
-                                    <td colSpan={showClarificationColumn ? 11 : 10} className="px-6 py-10 text-center text-slate-500">
+                                    <td colSpan={showClarificationColumn ? 13 : 12} className="px-6 py-10 text-center text-slate-500">
                                         Ładowanie zleconych badań...
                                     </td>
                                 </tr>
                             ) : filteredOrders.length === 0 ? (
                                 <tr className="border-t border-slate-100">
-                                    <td colSpan={showClarificationColumn ? 11 : 10} className="px-6 py-10 text-center text-slate-500">
+                                    <td colSpan={showClarificationColumn ? 13 : 12} className="px-6 py-10 text-center text-slate-500">
                                         Brak pozycji w tym widoku.
                                     </td>
                                 </tr>
@@ -386,6 +396,12 @@ function MainProductOrderedTestsPage({
                                             </td>
                                             <td className="whitespace-nowrap px-6 py-4 text-slate-700">
                                                 {order.asana_task_number || '—'}
+                                            </td>
+                                            <td className="whitespace-nowrap px-6 py-4 text-slate-700">
+                                                {order.po_number || '—'}
+                                            </td>
+                                            <td className="whitespace-nowrap px-6 py-4 text-slate-700">
+                                                {order.test_cost || '—'}
                                             </td>
                                             <td className="px-6 py-4 text-slate-700">
                                                 {order.name}
@@ -459,13 +475,13 @@ function MainProductOrderedTestsPage({
                                                             </button>
                                                             <button
                                                                 type="button"
-                                                                onClick={() => handleMoveToArchive(order)}
+                                                                onClick={() => handleMoveToReleased(order)}
                                                                 className="rounded-2xl border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
                                                             >
-                                                                Przenieś do archiwum
+                                                                Przenieś do zwolnionych
                                                             </button>
                                                         </>
-                                                    ) : viewMode === 'archive' ? (
+                                                    ) : viewMode === 'archive' || viewMode === 'released' ? (
                                                         <button
                                                             type="button"
                                                             onClick={() => openDocumentsDialog(order, 'preview')}

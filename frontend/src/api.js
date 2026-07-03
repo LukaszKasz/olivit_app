@@ -171,8 +171,16 @@ export const variantProductsAPI = {
         const response = await api.post('/api/variant-products/batches/ordered-tests', payload);
         return response.data;
     },
+    orderBatchTestsBulk: async (payload) => {
+        const response = await api.post('/api/variant-products/batches/ordered-tests/bulk', payload);
+        return response.data;
+    },
     getOrderedBatchTests: async () => {
         const response = await api.get('/api/variant-products/batches/ordered-tests');
+        return response.data;
+    },
+    getReleasedBatchTests: async () => {
+        const response = await api.get('/api/variant-products/batches/released');
         return response.data;
     },
     getClarificationBatchTests: async () => {
@@ -185,6 +193,10 @@ export const variantProductsAPI = {
     },
     updateBatchTest: async (orderId, payload) => {
         const response = await api.patch(`/api/variant-products/batches/ordered-tests/${orderId}`, payload);
+        return response.data;
+    },
+    createRetestBatchTest: async (payload) => {
+        const response = await api.post('/api/variant-products/batches/retest', payload);
         return response.data;
     },
     archiveBatchTests: async (ids) => {
@@ -205,6 +217,10 @@ export const variantProductsAPI = {
     },
     createFinishedProductControl: async (payload) => {
         const response = await api.post('/api/variant-products/finished-product-controls', payload);
+        return response.data;
+    },
+    updateFinishedProductControlsStatus: async (payload) => {
+        const response = await api.patch('/api/variant-products/finished-product-controls/status', payload);
         return response.data;
     },
     getFinishedProductControls: async () => {

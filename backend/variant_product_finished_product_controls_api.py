@@ -49,6 +49,11 @@ class VariantProductFinishedProductControlCreate(BaseModel):
     comment: Optional[str] = None
 
 
+class VariantProductFinishedProductControlBulkStatusUpdate(BaseModel):
+    ids: list[int]
+    label_status: str
+
+
 class VariantProductFinishedProductControlResponse(BaseModel):
     id: int
     ordered_test_id: Optional[int] = None

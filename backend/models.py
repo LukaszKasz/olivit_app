@@ -60,6 +60,8 @@ class MainProductTestOrder(Base):
     production_date = Column(String(50), nullable=True)
     expiry_date = Column(String(50), nullable=True)
     planned_test_date = Column(String(50), nullable=True)
+    test_cost = Column(String(255), nullable=True)
+    po_number = Column(String(255), nullable=True)
     workflow_status = Column(String(50), nullable=False, server_default="ordered_tests", index=True)
     clarification_note = Column(String(2000), nullable=True)
     ordered_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
@@ -79,6 +81,7 @@ class VariantProductBatchTestOrder(Base):
     __tablename__ = "variant_product_batch_test_orders"
 
     id = Column(Integer, primary_key=True, index=True)
+    original_test_order_id = Column(Integer, index=True, nullable=True)
     sku = Column(String(100), index=True, nullable=False)
     name = Column(String(512), nullable=False)
     ean = Column(String(255), nullable=False)
@@ -88,6 +91,8 @@ class VariantProductBatchTestOrder(Base):
     production_date = Column(String(50), nullable=True)
     expiry_date = Column(String(50), nullable=True)
     planned_test_date = Column(String(50), nullable=True)
+    test_cost = Column(String(255), nullable=True)
+    po_number = Column(String(255), nullable=True)
     workflow_status = Column(String(50), nullable=False, server_default="ordered_tests", index=True)
     clarification_note = Column(String(2000), nullable=True)
     label_status = Column(String(50), nullable=True, index=True)
@@ -139,6 +144,7 @@ class VariantProductBatchTestOrderArchive(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     ordered_test_id = Column(Integer, index=True, nullable=True)
+    original_test_order_id = Column(Integer, index=True, nullable=True)
     sku = Column(String(100), index=True, nullable=False)
     name = Column(String(512), nullable=False)
     ean = Column(String(255), nullable=False)
@@ -148,6 +154,8 @@ class VariantProductBatchTestOrderArchive(Base):
     production_date = Column(String(50), nullable=True)
     expiry_date = Column(String(50), nullable=True)
     planned_test_date = Column(String(50), nullable=True)
+    test_cost = Column(String(255), nullable=True)
+    po_number = Column(String(255), nullable=True)
     workflow_status = Column(String(50), nullable=True, index=True)
     clarification_note = Column(String(2000), nullable=True)
     label_status = Column(String(50), nullable=True, index=True)

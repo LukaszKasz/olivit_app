@@ -3,6 +3,7 @@ import { variantProductsAPI } from '../api';
 
 const PAGE_SIZE = 50;
 const LABORATORIES = ['Laboratorium A', 'Laboratorium B', 'Laboratorium C'];
+const getVariantRowKey = (row) => `${(row.sku || '').trim()}::${(row.ean || '').trim()}`;
 
 function VariantProductsPage() {
     const [query, setQuery] = useState('');
@@ -25,6 +26,8 @@ function VariantProductsPage() {
         laboratory: '',
         product: null,
         batchNumber: '',
+        testCost: '',
+        poNumber: '',
         saving: false,
     });
     const [selectedProductIds, setSelectedProductIds] = useState([]);
@@ -36,6 +39,8 @@ function VariantProductsPage() {
         productionDate: '',
         expiryDate: '',
         plannedTestDate: '',
+        testCost: '',
+        poNumber: '',
         targetRow: null,
         relatedRows: [],
     });
@@ -124,6 +129,8 @@ function VariantProductsPage() {
             laboratory,
             product: contextMenu.product,
             batchNumber: '',
+            testCost: '',
+            poNumber: '',
             saving: false,
         });
         setContextMenu((prev) => ({ ...prev, visible: false, submenuOpen: false }));
@@ -140,6 +147,8 @@ function VariantProductsPage() {
             laboratory: '',
             product: contextMenu.product,
             batchNumber: '',
+            testCost: '',
+            poNumber: '',
             saving: false,
         });
         setContextMenu((prev) => ({ ...prev, visible: false, submenuOpen: false }));
@@ -159,6 +168,8 @@ function VariantProductsPage() {
                     ean: orderDialog.product.ean,
                     laboratory_name: orderDialog.laboratory || undefined,
                     batch_number: orderDialog.batchNumber,
+                    test_cost: orderDialog.testCost,
+                    po_number: orderDialog.poNumber,
                 });
                 setSuccess(
                     orderDialog.mode === 'test-order'
@@ -172,6 +183,8 @@ function VariantProductsPage() {
                     laboratory: '',
                     product: null,
                     batchNumber: '',
+                    testCost: '',
+                    poNumber: '',
                     saving: false,
                 });
             } catch (err) {
@@ -213,6 +226,17 @@ function VariantProductsPage() {
                 }
             }
 
+            const selectedProductKey = getVariantRowKey(selectedProduct);
+            const seenRelatedKeys = new Set([selectedProductKey]);
+            const uniqueRelatedProducts = relatedProducts.filter((product) => {
+                const productKey = getVariantRowKey(product);
+                if (seenRelatedKeys.has(productKey)) {
+                    return false;
+                }
+                seenRelatedKeys.add(productKey);
+                return true;
+            });
+
             setBulkBatchDialog({
                 open: true,
                 saving: false,
@@ -221,6 +245,8 @@ function VariantProductsPage() {
                 productionDate: '',
                 expiryDate: '',
                 plannedTestDate: '',
+                testCost: '',
+                poNumber: '',
                 targetRow: {
                     id: selectedProduct.id,
                     projectNumber: selectedProduct.project_number || '',
@@ -229,7 +255,7 @@ function VariantProductsPage() {
                     ean: selectedProduct.ean,
                     batchNumber: '',
                 },
-                relatedRows: relatedProducts.map((product) => ({
+                relatedRows: uniqueRelatedProducts.map((product) => ({
                     id: product.id,
                     projectNumber: product.project_number || '',
                     sku: product.sku,
@@ -258,6 +284,8 @@ function VariantProductsPage() {
             productionDate: '',
             expiryDate: '',
             plannedTestDate: '',
+            testCost: '',
+            poNumber: '',
             targetRow: null,
             relatedRows: [],
         });
@@ -277,21 +305,36 @@ function VariantProductsPage() {
             return;
         }
 
+        const rowsToSave = [bulkBatchDialog.targetRow, ...bulkBatchDialog.relatedRows].filter((row, index, allRows) => (
+            index === allRows.findIndex((candidate) => getVariantRowKey(candidate) === getVariantRowKey(row))
+        ));
+        const hasMissingBatchNumbers = rowsToSave.some((row) => !row.batchNumber.trim());
+
+        if (hasMissingBatchNumbers) {
+            setError('Uzupełnij numer serii dla wszystkich produktów przed zapisem.');
+            setSuccess('');
+            return;
+        }
+
         try {
             setBulkBatchDialog((current) => ({ ...current, saving: true }));
-            await variantProductsAPI.orderBatchTests({
-                sku: bulkBatchDialog.targetRow.sku,
-                name: bulkBatchDialog.targetRow.name,
-                ean: bulkBatchDialog.targetRow.ean,
+            await variantProductsAPI.orderBatchTestsBulk({
                 laboratory_name: bulkBatchDialog.laboratory,
-                batch_number: bulkBatchDialog.targetRow.batchNumber,
                 asana_task_number: bulkBatchDialog.asanaTaskNumber,
                 production_date: bulkBatchDialog.productionDate,
                 expiry_date: bulkBatchDialog.expiryDate,
                 planned_test_date: bulkBatchDialog.plannedTestDate,
+                test_cost: bulkBatchDialog.testCost,
+                po_number: bulkBatchDialog.poNumber,
+                items: rowsToSave.map((row) => ({
+                    sku: row.sku,
+                    name: row.name,
+                    ean: row.ean,
+                    batch_number: row.batchNumber,
+                })),
             });
 
-            setSuccess(`Zlecono badania dla wariantu ${bulkBatchDialog.targetRow.sku}.`);
+            setSuccess(`Zlecono badania dla ${bulkBatchDialog.targetRow.sku} i zapisano ${rowsToSave.length} produktów do kontroli produktu gotowego.`);
             setError('');
             setSelectedProductIds([]);
             setBulkBatchDialog({
@@ -302,6 +345,8 @@ function VariantProductsPage() {
                 productionDate: '',
                 expiryDate: '',
                 plannedTestDate: '',
+                testCost: '',
+                poNumber: '',
                 targetRow: null,
                 relatedRows: [],
             });
@@ -317,6 +362,7 @@ function VariantProductsPage() {
         || !bulkBatchDialog.expiryDate.trim()
         || !bulkBatchDialog.plannedTestDate.trim()
         || !bulkBatchDialog.targetRow.batchNumber.trim()
+        || bulkBatchDialog.relatedRows.some((row) => !row.batchNumber.trim())
         || bulkBatchDialog.saving;
 
     return (
@@ -546,10 +592,41 @@ function VariantProductsPage() {
                             />
                         </div>
 
+                        {orderDialog.mode === 'test-order' && (
+                            <div className="mb-6 grid gap-4 md:grid-cols-2">
+                                <div>
+                                    <label className="block text-xs font-semibold uppercase tracking-[0.18em] text-slate-500" htmlFor="variant-test-cost">
+                                        Koszt badania
+                                    </label>
+                                    <input
+                                        id="variant-test-cost"
+                                        type="text"
+                                        value={orderDialog.testCost}
+                                        onChange={(event) => setOrderDialog((prev) => ({ ...prev, testCost: event.target.value }))}
+                                        placeholder="Np. 350 PLN"
+                                        className="mt-3 w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-500 focus:bg-white"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-semibold uppercase tracking-[0.18em] text-slate-500" htmlFor="variant-po-number">
+                                        Numer PO
+                                    </label>
+                                    <input
+                                        id="variant-po-number"
+                                        type="text"
+                                        value={orderDialog.poNumber}
+                                        onChange={(event) => setOrderDialog((prev) => ({ ...prev, poNumber: event.target.value }))}
+                                        placeholder="Np. PO-12345"
+                                        className="mt-3 w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-500 focus:bg-white"
+                                    />
+                                </div>
+                            </div>
+                        )}
+
                         <div className="flex justify-end gap-3">
                             <button
                                 type="button"
-                                onClick={() => setOrderDialog({ open: false, mode: 'test-order', laboratory: '', product: null, batchNumber: '', saving: false })}
+                                onClick={() => setOrderDialog({ open: false, mode: 'test-order', laboratory: '', product: null, batchNumber: '', testCost: '', poNumber: '', saving: false })}
                                 className="rounded-2xl border border-slate-300 px-5 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
                                 disabled={orderDialog.saving}
                             >
@@ -613,6 +690,32 @@ function VariantProductsPage() {
                                                 value={bulkBatchDialog.asanaTaskNumber}
                                                 onChange={(event) => setBulkBatchDialog((current) => ({ ...current, asanaTaskNumber: event.target.value }))}
                                                 placeholder="Np. 1234567890"
+                                                className="mt-3 w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-500"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-semibold uppercase tracking-[0.18em] text-slate-500" htmlFor="bulk-variant-test-cost">
+                                                Koszt badania
+                                            </label>
+                                            <input
+                                                id="bulk-variant-test-cost"
+                                                type="text"
+                                                value={bulkBatchDialog.testCost}
+                                                onChange={(event) => setBulkBatchDialog((current) => ({ ...current, testCost: event.target.value }))}
+                                                placeholder="Np. 350 PLN"
+                                                className="mt-3 w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-500"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-semibold uppercase tracking-[0.18em] text-slate-500" htmlFor="bulk-variant-po-number">
+                                                Numer PO
+                                            </label>
+                                            <input
+                                                id="bulk-variant-po-number"
+                                                type="text"
+                                                value={bulkBatchDialog.poNumber}
+                                                onChange={(event) => setBulkBatchDialog((current) => ({ ...current, poNumber: event.target.value }))}
+                                                placeholder="Np. PO-12345"
                                                 className="mt-3 w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-500"
                                             />
                                         </div>

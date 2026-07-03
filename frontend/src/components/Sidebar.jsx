@@ -24,10 +24,12 @@ function Sidebar({ collapsed, onToggle }) {
                 {
                     items: [
                         { to: '/main-products', label: 'Produkty' },
+                        { to: '/main-products/all', label: 'Wszystkie' },
                         { to: '/main-products/ordered-tests', label: 'Badania zlecone' },
                         { to: '/main-products/to-clarify', label: 'Do wyjaśnienia' },
+                        { to: '/main-products/archive', label: 'Archiwum', indent: true },
                         { to: '/main-products/to-pack', label: 'Do spakowania' },
-                        { to: '/main-products/archive', label: 'Archiwum' },
+                        { to: '/main-products/released', label: 'Zwolnione' },
                     ],
                 },
             ],
@@ -38,9 +40,12 @@ function Sidebar({ collapsed, onToggle }) {
                 {
                     items: [
                         { to: '/product-variants', label: 'Produkty spakowane' },
+                        { to: '/product-variants/batches/all', label: 'Wszystkie' },
                         { to: '/product-variants/batches/ordered-tests', label: 'Badania zlecone' },
                         { to: '/product-variants/batches/to-clarify', label: 'Do wyjaśnienia' },
-                        { to: '/product-variants/batches/archive', label: 'Badania ukończone' },
+                        { to: '/product-variants/batches/archive-history', label: 'Archiwum', indent: true },
+                        { to: '/product-variants/batches/archive', label: 'Do zwolnienia warunkowe' },
+                        { to: '/product-variants/batches/released', label: 'Do zwolnienia' },
                     ],
                 },
                 {
@@ -83,19 +88,36 @@ function Sidebar({ collapsed, onToggle }) {
                 {productMenuSections.map((section, sectionIndex) => (
                     <div key={section.groups[0].items[0].to} className={sectionIndex > 0 ? 'mt-3 border-t border-slate-700/50 pt-3' : ''}>
                         {!collapsed && section.title ? (
-                            <p className="px-4 pb-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                            <p className="px-4 pb-2 text-xs font-semibold uppercase tracking-[0.18em] text-sky-300">
                                 {section.title}
                             </p>
                         ) : null}
                         {section.groups.map((group) => (
-                            <div key={group.title || group.items[0].to} className={!collapsed && group.title ? 'mt-2' : ''}>
+                            <div
+                                key={group.title || group.items[0].to}
+                                className={
+                                    !collapsed && group.title
+                                        ? `mt-2 ${group.title.includes('Kontrola produktu gotowego') ? 'border-t border-slate-700/50 pt-3' : ''}`
+                                        : ''
+                                }
+                            >
                                 {!collapsed && group.title ? (
-                                    <p className="px-4 pb-2 pt-1 text-xs font-medium uppercase tracking-[0.14em] text-slate-400">
+                                    <p
+                                        className={`px-4 pb-2 pt-1 text-xs font-medium uppercase tracking-[0.14em] ${
+                                            group.title.includes('Kontrola produktu gotowego') ? 'text-sky-300' : 'text-slate-400'
+                                        }`}
+                                    >
                                         {group.title}
                                     </p>
                                 ) : null}
                                 {group.items.map((item) => (
-                                    <NavLink key={item.to} to={item.to} end className={navLinkClass} title={item.label}>
+                                    <NavLink
+                                        key={item.to}
+                                        to={item.to}
+                                        end
+                                        className={({ isActive }) => `${navLinkClass({ isActive })} ${!collapsed && item.indent ? 'ml-6 pl-6' : ''}`}
+                                        title={item.label}
+                                    >
                                         <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7h16M4 12h16M4 17h16" />
                                         </svg>

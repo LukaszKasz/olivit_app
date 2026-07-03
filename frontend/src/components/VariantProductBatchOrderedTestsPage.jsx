@@ -4,10 +4,14 @@ import { variantProductsAPI } from '../api';
 const MATERIAL_TYPES = ['Etykieta+opakowanie', 'Kartonik'];
 const YES_NO = ['Tak', 'Nie'];
 const YES_NO_NA = ['Tak', 'Nie', 'Nie dotyczy'];
+const LABORATORIES = ['Laboratorium A', 'Laboratorium B', 'Laboratorium C'];
 const TEST_STATUS_META = {
     ordered_tests: { label: 'Badania zlecone', className: 'bg-amber-100 text-amber-800' },
+    retest_ordered: { label: 'Badanie ponowne', className: 'bg-orange-100 text-orange-800' },
+    released: { label: 'Do zwolnienia', className: 'bg-emerald-100 text-emerald-800' },
     to_clarify: { label: 'Do wyjaśnienia', className: 'bg-rose-100 text-rose-800' },
-    archive: { label: 'Badania ukończone', className: 'bg-slate-200 text-slate-800' },
+    archive: { label: 'Do zwolnienia warunkowe', className: 'bg-slate-200 text-slate-800' },
+    retest_requested: { label: 'Zlecono ponowne badanie', className: 'bg-cyan-100 text-cyan-800' },
 };
 const LABEL_STATUS_META = {
     current: { label: 'Bieżące', className: 'bg-sky-100 text-sky-800' },
@@ -220,6 +224,24 @@ function isAffirmative(value) {
     return value === 'Tak' || value === 'Nie dotyczy';
 }
 
+function createRetestForm(row = null) {
+    return {
+        id: row?.id || null,
+        sku: row?.sku || '',
+        name: row?.name || '',
+        projectNumber: row?.project_number || '',
+        originalTestOrderId: row?.original_test_order_id || null,
+        laboratory: row?.laboratory_name || '',
+        asanaTaskNumber: row?.asana_task_number || '',
+        testCost: row?.test_cost || '',
+        poNumber: row?.po_number || '',
+        batchNumber: row?.batch_number || '',
+        productionDate: row?.production_date || '',
+        expiryDate: row?.expiry_date || '',
+        plannedTestDate: row?.planned_test_date || '',
+    };
+}
+
 function hasFinishedProductControlIssues(row) {
     return [
         !isAffirmative(row.active_substances_match_pds),
@@ -302,16 +324,59 @@ function VariantProductBatchOrderedTestsPage({
         targetStatus: 'archive',
         note: '',
     });
+    const [finishedControlMoveDialog, setFinishedControlMoveDialog] = useState({
+        open: false,
+        saving: false,
+        labelStatus: 'incorrect',
+    });
+    const [retestDialog, setRetestDialog] = useState({
+        open: false,
+        saving: false,
+        form: createRetestForm(),
+    });
     const highlightNegativeFinishedControlValues = enableFinishedProductControl && finishedProductControlFilter === 'incorrect';
+    const isAllView = !enableFinishedProductControl && !archiveMode && viewMode === 'all';
+    const isReleasedView = !enableFinishedProductControl && !archiveMode && viewMode === 'released';
 
     const loadRows = async () => {
-        const data = enableFinishedProductControl
-            ? await variantProductsAPI.getFinishedProductControls()
-            : archiveMode
-                ? await variantProductsAPI.getArchivedBatchTests()
-                : viewMode === 'to_clarify'
-                    ? await variantProductsAPI.getClarificationBatchTests()
-                    : await variantProductsAPI.getOrderedBatchTests();
+        if (enableFinishedProductControl) {
+            const data = await variantProductsAPI.getFinishedProductControls();
+            return Array.isArray(data) ? data : [];
+        }
+
+        if (archiveMode) {
+            const data = await variantProductsAPI.getArchivedBatchTests();
+            return Array.isArray(data) ? data : [];
+        }
+
+        if (viewMode === 'all') {
+            const [orderedData, releasedData, clarificationData, archivedData] = await Promise.all([
+                variantProductsAPI.getOrderedBatchTests(),
+                variantProductsAPI.getReleasedBatchTests(),
+                variantProductsAPI.getClarificationBatchTests(),
+                variantProductsAPI.getArchivedBatchTests(),
+            ]);
+
+            return [orderedData, releasedData, clarificationData, archivedData]
+                .flatMap((data) => (Array.isArray(data) ? data : []))
+                .sort((left, right) => {
+                    const leftTimestamp = new Date(left.archived_at || left.batch_added_at || left.ordered_at || 0).getTime();
+                    const rightTimestamp = new Date(right.archived_at || right.batch_added_at || right.ordered_at || 0).getTime();
+                    return rightTimestamp - leftTimestamp;
+                });
+        }
+
+        if (viewMode === 'released') {
+            const data = await variantProductsAPI.getReleasedBatchTests();
+            return Array.isArray(data) ? data : [];
+        }
+
+        if (viewMode === 'to_clarify') {
+            const data = await variantProductsAPI.getClarificationBatchTests();
+            return Array.isArray(data) ? data : [];
+        }
+
+        const data = await variantProductsAPI.getOrderedBatchTests();
         return Array.isArray(data) ? data : [];
     };
 
@@ -586,22 +651,14 @@ function VariantProductBatchOrderedTestsPage({
     const displayCount = filteredRows.length;
 
     const toggleRowSelection = (rowId) => {
-        setSelectedRowIds((current) => {
-            if (enableFinishedProductControl) {
-                return current.includes(rowId) ? [] : [rowId];
-            }
-
-            return current.includes(rowId)
+        setSelectedRowIds((current) => (
+            current.includes(rowId)
                 ? current.filter((id) => id !== rowId)
-                : [...current, rowId];
-        });
+                : [...current, rowId]
+        ));
     };
 
     const toggleAllVisibleRows = () => {
-        if (enableFinishedProductControl) {
-            return;
-        }
-
         setSelectedRowIds((current) =>
             allVisibleSelected
                 ? current.filter((id) => !visibleRowIds.includes(id))
@@ -631,6 +688,120 @@ function VariantProductBatchOrderedTestsPage({
         });
     };
 
+    const openFinishedControlMoveDialog = () => {
+        setFinishedControlMoveDialog({
+            open: true,
+            saving: false,
+            labelStatus: 'incorrect',
+        });
+    };
+
+    const closeFinishedControlMoveDialog = () => {
+        if (finishedControlMoveDialog.saving) {
+            return;
+        }
+
+        setFinishedControlMoveDialog({
+            open: false,
+            saving: false,
+            labelStatus: 'incorrect',
+        });
+    };
+
+    const openRetestDialog = () => {
+        if (selectedRowIds.length !== 1) {
+            return;
+        }
+
+        const selectedRow = rows.find((row) => row.id === selectedRowIds[0]);
+        if (!selectedRow) {
+            return;
+        }
+
+        setRetestDialog({
+            open: true,
+            saving: false,
+            form: createRetestForm(selectedRow),
+        });
+    };
+
+    const closeRetestDialog = () => {
+        if (retestDialog.saving) {
+            return;
+        }
+
+        setRetestDialog({
+            open: false,
+            saving: false,
+            form: createRetestForm(),
+        });
+    };
+
+    const updateRetestField = (field, value) => {
+        setRetestDialog((current) => ({
+            ...current,
+            form: {
+                ...current.form,
+                [field]: value,
+            },
+        }));
+    };
+
+    const isRetestFormValid = () => (
+        retestDialog.form.laboratory.trim()
+        && retestDialog.form.batchNumber.trim()
+        && retestDialog.form.productionDate.trim()
+        && retestDialog.form.expiryDate.trim()
+        && retestDialog.form.plannedTestDate.trim()
+    );
+
+    const handleRetestSave = async () => {
+        try {
+            setRetestDialog((current) => ({ ...current, saving: true }));
+            await variantProductsAPI.createRetestBatchTest({
+                order_id: retestDialog.form.id,
+                laboratory_name: retestDialog.form.laboratory,
+                batch_number: retestDialog.form.batchNumber,
+                asana_task_number: retestDialog.form.asanaTaskNumber,
+                production_date: retestDialog.form.productionDate,
+                expiry_date: retestDialog.form.expiryDate,
+                planned_test_date: retestDialog.form.plannedTestDate,
+                test_cost: retestDialog.form.testCost,
+                po_number: retestDialog.form.poNumber,
+            });
+            setRows(await loadRows());
+            setSelectedRowIds([]);
+            setSuccess(`Ponownie zlecono badania dla ${retestDialog.form.sku}.`);
+            setError('');
+            closeRetestDialog();
+        } catch (err) {
+            setError(err?.response?.data?.detail || err.message || 'Nie udało się ponownie zlecić badań.');
+            setRetestDialog((current) => ({ ...current, saving: false }));
+        }
+    };
+
+    const handleMoveSelectedFinishedControls = async () => {
+        try {
+            setFinishedControlMoveDialog((current) => ({ ...current, saving: true }));
+            await variantProductsAPI.updateFinishedProductControlsStatus({
+                ids: selectedRowIds,
+                label_status: finishedControlMoveDialog.labelStatus,
+            });
+            setRows(await loadRows());
+            setSelectedRowIds([]);
+            setSuccess(
+                finishedControlMoveDialog.labelStatus === 'incorrect'
+                    ? `Przeniesiono ${selectedRowIds.length} pozycji do zakładki Błędne.`
+                    : `Przeniesiono ${selectedRowIds.length} pozycji do zakładki Poprawne.`
+            );
+            setError('');
+            closeFinishedControlMoveDialog();
+        } catch (err) {
+            setError(err?.response?.data?.detail || err.message || 'Nie udało się przenieść pozycji.');
+            setFinishedControlMoveDialog((current) => ({ ...current, saving: false }));
+        }
+    };
+
     const handleMoveSelected = async () => {
         try {
             setMoveDialog((current) => ({ ...current, saving: true }));
@@ -650,10 +821,10 @@ function VariantProductBatchOrderedTestsPage({
             setSelectedRowIds([]);
             setSuccess(
                 moveDialog.targetStatus === 'to_clarify'
-                    ? `Przeniesiono ${selectedRowIds.length} pozycji do zakładki Do wyjaśnienia.`
-                    : moveDialog.targetStatus === 'ordered_tests'
-                        ? `Przeniesiono ${selectedRowIds.length} pozycji do zakładki Badania zlecone.`
-                        : `Przeniesiono ${selectedRowIds.length} pozycji do zakładki Badania ukończone.`
+                        ? `Przeniesiono ${selectedRowIds.length} pozycji do zakładki Do wyjaśnienia.`
+                        : moveDialog.targetStatus === 'ordered_tests'
+                            ? `Przeniesiono ${selectedRowIds.length} pozycji do zakładki Badania zlecone.`
+                            : `Przeniesiono ${selectedRowIds.length} pozycji do zakładki Do zwolnienia warunkowe.`
             );
             setError('');
             closeMoveDialog();
@@ -867,15 +1038,15 @@ function VariantProductBatchOrderedTestsPage({
     const previewDocument = documentsDialog.previewIndex !== null
         ? documentsDialog.files[documentsDialog.previewIndex]
         : null;
-    const showClarificationColumn = !enableFinishedProductControl && viewMode === 'to_clarify';
+    const showClarificationColumn = !enableFinishedProductControl && (viewMode === 'to_clarify' || viewMode === 'all');
     const moveOptions = viewMode === 'to_clarify'
         ? [
             { value: 'ordered_tests', label: 'Badania zlecone' },
-            { value: 'archive', label: 'Badania ukończone' },
+            { value: 'archive', label: 'Do zwolnienia warunkowe' },
         ]
         : [
             { value: 'to_clarify', label: 'Do wyjaśnienia' },
-            { value: 'archive', label: 'Badania ukończone' },
+            { value: 'archive', label: 'Do zwolnienia warunkowe' },
         ];
 
     return (
@@ -903,7 +1074,27 @@ function VariantProductBatchOrderedTestsPage({
                             Dodaj kontrolę
                         </button>
                     )}
-                    {!enableFinishedProductControl && !archiveMode && (
+                    {enableFinishedProductControl && finishedProductControlFilter === 'current' && (
+                        <button
+                            type="button"
+                            onClick={openFinishedControlMoveDialog}
+                            className="rounded-2xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                            disabled={selectedRowIds.length === 0}
+                        >
+                            Przenieś do
+                        </button>
+                    )}
+                    {!enableFinishedProductControl && viewMode === 'to_clarify' && (
+                        <button
+                            type="button"
+                            onClick={openRetestDialog}
+                            className="rounded-2xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                            disabled={selectedRowIds.length !== 1}
+                        >
+                            Zaleć ponowne badania
+                        </button>
+                    )}
+                    {!enableFinishedProductControl && !archiveMode && !isAllView && !isReleasedView && (
                         <button
                             type="button"
                             onClick={handleGenerateCoA}
@@ -913,7 +1104,7 @@ function VariantProductBatchOrderedTestsPage({
                             Generuj CoA
                         </button>
                     )}
-                    {!enableFinishedProductControl && !archiveMode && (
+                    {!enableFinishedProductControl && !archiveMode && !isAllView && !isReleasedView && (
                         <button
                             type="button"
                             onClick={openDocumentsDialog}
@@ -923,7 +1114,7 @@ function VariantProductBatchOrderedTestsPage({
                             Dodaj dokumenty
                         </button>
                     )}
-                    {!enableFinishedProductControl && !archiveMode && (
+                    {!enableFinishedProductControl && !archiveMode && !isAllView && !isReleasedView && (
                         <button
                             type="button"
                             onClick={openMoveDialog}
@@ -987,16 +1178,15 @@ function VariantProductBatchOrderedTestsPage({
                             {enableFinishedProductControl ? (
                                 <tr>
                                     <th className="px-6 py-4">
-                                        {enableFinishedProductControl ? null : (
-                                            <input
-                                                type="checkbox"
-                                                checked={allVisibleSelected}
-                                                onChange={toggleAllVisibleRows}
-                                                aria-label="Zaznacz wszystkie widoczne wiersze"
-                                            />
-                                        )}
+                                        <input
+                                            type="checkbox"
+                                            checked={allVisibleSelected}
+                                            onChange={toggleAllVisibleRows}
+                                            aria-label="Zaznacz wszystkie widoczne wiersze"
+                                        />
                                     </th>
                                     <th className="px-6 py-4">ID badania</th>
+                                    <th className="px-6 py-4">ID badania pierwotnego</th>
                                     <th className="px-6 py-4">ID kontroli etykiety</th>
                                     <th className="px-6 py-4">Numer projektu</th>
                                     <th className="px-6 py-4">Numer wariantu</th>
@@ -1041,12 +1231,15 @@ function VariantProductBatchOrderedTestsPage({
                                         />
                                     </th>
                                     <th className="px-6 py-4">ID badania</th>
+                                    <th className="px-6 py-4">ID badania pierwotnego</th>
                                     <th className="px-6 py-4">ID kontroli etykiety</th>
                                     <th className="px-6 py-4">Numer projektu</th>
                                     <th className="px-6 py-4">Numer wariantu</th>
                                     <th className="w-[22rem] min-w-[22rem] px-6 py-4">Nazwa</th>
                                     <th className="px-6 py-4">EAN</th>
                                     <th className="px-6 py-4">Numer w Asana</th>
+                                    <th className="px-6 py-4">Numer PO</th>
+                                    <th className="px-6 py-4">Koszt badania</th>
                                     <th className="px-6 py-4">Numer serii</th>
                                     <th className="px-6 py-4">Status badań</th>
                                     <th className="px-6 py-4">Status etykiety</th>
@@ -1086,13 +1279,13 @@ function VariantProductBatchOrderedTestsPage({
                         <tbody>
                             {loading ? (
                                 <tr className="border-t border-slate-100">
-                                    <td colSpan={enableFinishedProductControl ? 34 : showClarificationColumn ? 41 : 40} className="px-6 py-10 text-center text-slate-500">
+                                    <td colSpan={enableFinishedProductControl ? 35 : showClarificationColumn ? 44 : 43} className="px-6 py-10 text-center text-slate-500">
                                         {enableFinishedProductControl ? 'Ładowanie kontroli produktu gotowego...' : 'Ładowanie zleconych badań partii...'}
                                     </td>
                                 </tr>
                             ) : filteredRows.length === 0 ? (
                                 <tr className="border-t border-slate-100">
-                                    <td colSpan={enableFinishedProductControl ? 34 : showClarificationColumn ? 41 : 40} className="px-6 py-10 text-center text-slate-500">
+                                    <td colSpan={enableFinishedProductControl ? 35 : showClarificationColumn ? 44 : 43} className="px-6 py-10 text-center text-slate-500">
                                         Brak wyników dla podanego wyszukiwania.
                                     </td>
                                 </tr>
@@ -1114,6 +1307,9 @@ function VariantProductBatchOrderedTestsPage({
                                         </td>
                                         <td className="whitespace-nowrap px-6 py-4 text-slate-700">
                                             {row.test_order_id ?? '—'}
+                                        </td>
+                                        <td className="whitespace-nowrap px-6 py-4 text-slate-700">
+                                            {row.original_test_order_id ?? '—'}
                                         </td>
                                         <td className="whitespace-nowrap px-6 py-4 text-slate-700">
                                             {row.label_control_id ?? '—'}
@@ -1161,6 +1357,8 @@ function VariantProductBatchOrderedTestsPage({
                                                 <td className="w-[22rem] min-w-[22rem] px-6 py-4"><TwoLineNameCell>{row.name}</TwoLineNameCell></td>
                                                 <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.ean}</td>
                                                 <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.asana_task_number || '—'}</td>
+                                                <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.po_number || '—'}</td>
+                                                <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.test_cost || '—'}</td>
                                                 <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.batch_number}</td>
                                                 <td className="px-6 py-4 text-slate-700">
                                                     <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${(TEST_STATUS_META[row.workflow_status || 'ordered_tests'] || TEST_STATUS_META.ordered_tests).className}`}>
@@ -1292,6 +1490,213 @@ function VariantProductBatchOrderedTestsPage({
                     >
                         Dodaj kontrolę produktu gotowego
                     </button>
+                </div>
+            )}
+
+            {finishedControlMoveDialog.open && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/35 p-4">
+                    <div className="w-full max-w-xl rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl">
+                        <div className="mb-6">
+                            <h2 className="text-2xl font-semibold text-slate-900">Przenieś</h2>
+                            <p className="mt-2 text-sm text-slate-600">
+                                Zaznaczone pozycje: {selectedRowIds.length}
+                            </p>
+                        </div>
+                        <div className="mb-6">
+                            <label className="block text-xs font-semibold uppercase tracking-[0.18em] text-slate-500" htmlFor="finished-control-move-target-status">
+                                Status docelowy
+                            </label>
+                            <select
+                                id="finished-control-move-target-status"
+                                value={finishedControlMoveDialog.labelStatus}
+                                onChange={(event) => setFinishedControlMoveDialog((current) => ({ ...current, labelStatus: event.target.value }))}
+                                className="mt-3 w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-500 focus:bg-white"
+                            >
+                                <option value="incorrect">Błędne</option>
+                                <option value="correct">Poprawne</option>
+                            </select>
+                        </div>
+
+                        <div className="flex justify-end gap-3">
+                            <button
+                                type="button"
+                                onClick={closeFinishedControlMoveDialog}
+                                className="rounded-2xl border border-slate-300 px-5 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                                disabled={finishedControlMoveDialog.saving}
+                            >
+                                Anuluj
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleMoveSelectedFinishedControls}
+                                className="rounded-2xl bg-slate-900 px-5 py-3 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                                disabled={finishedControlMoveDialog.saving || selectedRowIds.length === 0}
+                            >
+                                {finishedControlMoveDialog.saving ? 'Zapisywanie...' : 'Przenieś'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {retestDialog.open && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/35 p-4">
+                    <div className="w-full max-w-5xl rounded-3xl border border-slate-200 bg-white shadow-2xl">
+                        <div className="border-b border-slate-200 px-6 py-5">
+                            <h2 className="text-2xl font-semibold text-slate-900">Zaleć ponowne badania</h2>
+                        </div>
+
+                        <div className="max-h-[65vh] overflow-auto px-6 py-5">
+                            <div className="mb-6 grid gap-6 rounded-3xl border border-slate-200 bg-slate-50 p-5 lg:grid-cols-2">
+                                <div>
+                                    <label className="block text-xs font-semibold uppercase tracking-[0.18em] text-slate-500" htmlFor="retest-variant-laboratory">
+                                        Laboratorium
+                                    </label>
+                                    <select
+                                        id="retest-variant-laboratory"
+                                        value={retestDialog.form.laboratory}
+                                        onChange={(event) => updateRetestField('laboratory', event.target.value)}
+                                        className="mt-3 w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-500"
+                                    >
+                                        <option value="">Wybierz laboratorium</option>
+                                        {LABORATORIES.map((laboratory) => (
+                                            <option key={laboratory} value={laboratory}>
+                                                {laboratory}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <div className="mt-4 grid gap-4 md:grid-cols-2">
+                                        <div>
+                                            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                                                Numer projektu
+                                            </div>
+                                            <div className="mt-3 rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900">
+                                                {retestDialog.form.projectNumber || '—'}
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-semibold uppercase tracking-[0.18em] text-slate-500" htmlFor="retest-variant-asana-task-number">
+                                                Numer w Asana
+                                            </label>
+                                            <input
+                                                id="retest-variant-asana-task-number"
+                                                type="text"
+                                                value={retestDialog.form.asanaTaskNumber}
+                                                onChange={(event) => updateRetestField('asanaTaskNumber', event.target.value)}
+                                                placeholder="Np. 1234567890"
+                                                className="mt-3 w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-500"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-semibold uppercase tracking-[0.18em] text-slate-500" htmlFor="retest-variant-test-cost">
+                                                Koszt badania
+                                            </label>
+                                            <input
+                                                id="retest-variant-test-cost"
+                                                type="text"
+                                                value={retestDialog.form.testCost}
+                                                onChange={(event) => updateRetestField('testCost', event.target.value)}
+                                                placeholder="Np. 350 PLN"
+                                                className="mt-3 w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-500"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-semibold uppercase tracking-[0.18em] text-slate-500" htmlFor="retest-variant-po-number">
+                                                Numer PO
+                                            </label>
+                                            <input
+                                                id="retest-variant-po-number"
+                                                type="text"
+                                                value={retestDialog.form.poNumber}
+                                                onChange={(event) => updateRetestField('poNumber', event.target.value)}
+                                                placeholder="Np. PO-12345"
+                                                className="mt-3 w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-500"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+                                <div>
+                                    <div className="block text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                                        Daty
+                                    </div>
+                                    <div className="mt-3 grid gap-4 md:grid-cols-3">
+                                        <label className="block">
+                                            <span className="text-sm font-medium text-slate-900">Data produkcji</span>
+                                            <input
+                                                type="date"
+                                                value={retestDialog.form.productionDate}
+                                                onChange={(event) => updateRetestField('productionDate', event.target.value)}
+                                                className="mt-2 w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-500"
+                                            />
+                                        </label>
+                                        <label className="block">
+                                            <span className="text-sm font-medium text-slate-900">Data ważności</span>
+                                            <input
+                                                type="date"
+                                                value={retestDialog.form.expiryDate}
+                                                onChange={(event) => updateRetestField('expiryDate', event.target.value)}
+                                                className="mt-2 w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-500"
+                                            />
+                                        </label>
+                                        <label className="block">
+                                            <span className="text-sm font-medium text-slate-900">Plan. realizacji</span>
+                                            <input
+                                                type="date"
+                                                value={retestDialog.form.plannedTestDate}
+                                                onChange={(event) => updateRetestField('plannedTestDate', event.target.value)}
+                                                className="mt-2 w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-500"
+                                            />
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="rounded-3xl border border-slate-200">
+                                <div className="border-b border-slate-200 bg-slate-50 px-5 py-4">
+                                    <h3 className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">Produkt do badań</h3>
+                                </div>
+                                <div className="px-5 py-5">
+                                    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
+                                        <div className="grid grid-cols-[minmax(0,140px)_minmax(0,1fr)_minmax(220px,1fr)] gap-3 border-b border-slate-200 px-4 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                                            <div>Numer wariantu</div>
+                                            <div>Nazwa</div>
+                                            <div>Numer serii</div>
+                                        </div>
+                                        <div className="grid grid-cols-[minmax(0,140px)_minmax(0,1fr)_minmax(220px,1fr)] gap-3 px-4 py-3 text-sm text-slate-700">
+                                            <div className="font-semibold text-slate-900">{retestDialog.form.sku}</div>
+                                            <div>{retestDialog.form.name}</div>
+                                            <input
+                                                type="text"
+                                                value={retestDialog.form.batchNumber}
+                                                onChange={(event) => updateRetestField('batchNumber', event.target.value)}
+                                                placeholder="Wpisz serię"
+                                                className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-500"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="flex justify-end gap-3 border-t border-slate-200 px-6 py-5">
+                            <button
+                                type="button"
+                                onClick={closeRetestDialog}
+                                className="rounded-2xl border border-slate-300 px-5 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                                disabled={retestDialog.saving}
+                            >
+                                Anuluj
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleRetestSave}
+                                disabled={retestDialog.saving || !isRetestFormValid()}
+                                className="rounded-2xl bg-slate-900 px-5 py-3 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                                {retestDialog.saving ? 'Zapisywanie...' : 'Zapisz'}
+                            </button>
+                        </div>
+                    </div>
                 </div>
             )}
 

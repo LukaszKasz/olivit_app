@@ -13,6 +13,8 @@ class MainProductTestOrderCreate(BaseModel):
     production_date: Optional[str] = None
     expiry_date: Optional[str] = None
     planned_test_date: Optional[str] = None
+    test_cost: Optional[str] = None
+    po_number: Optional[str] = None
 
 
 class MainProductTestOrderUpdate(BaseModel):
@@ -30,6 +32,8 @@ class MainProductTestOrderResponse(BaseModel):
     production_date: Optional[str] = None
     expiry_date: Optional[str] = None
     planned_test_date: Optional[str] = None
+    test_cost: Optional[str] = None
+    po_number: Optional[str] = None
     workflow_status: Optional[str] = None
     clarification_note: Optional[str] = None
     ordered_at: datetime
