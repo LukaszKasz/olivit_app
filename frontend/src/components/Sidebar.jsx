@@ -52,7 +52,8 @@ function Sidebar({ collapsed, onToggle }) {
                     title: 'Kontrola produktu gotowego',
                     items: [
                         { to: '/product-variants/finished-product-control', label: 'Bieżące' },
-                        { to: '/product-variants/finished-product-control/incorrect', label: 'Błędne' },
+                        { to: '/product-variants/finished-product-control/incorrect', label: 'Do wyjaśnienia' },
+                        { to: '/product-variants/finished-product-control/archive', label: 'Archiwum', indent: true },
                         { to: '/product-variants/finished-product-control/correct', label: 'Poprawne' },
                     ],
                 },
@@ -136,6 +137,12 @@ function Sidebar({ collapsed, onToggle }) {
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                         </svg>
                         {!collapsed && <span className="whitespace-nowrap">{t('sidebar.settings')}</span>}
+                    </NavLink>
+                    <NavLink to="/table-cleanup" end className={navLinkClass} title="Czyszczenie tabel">
+                        <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3m-7 0h8" />
+                        </svg>
+                        {!collapsed && <span className="whitespace-nowrap">Czyszczenie tabel</span>}
                     </NavLink>
                 </div>
 

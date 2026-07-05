@@ -6,6 +6,7 @@ import MainProductsPage from './components/MainProductsPage';
 import MainProductOrderedTestsPage from './components/MainProductOrderedTestsPage';
 import MenuPlaceholderPage from './components/MenuPlaceholderPage';
 import SettingsPage from './components/SettingsPage';
+import TableCleanupPage from './components/TableCleanupPage';
 import VariantProductsPage from './components/VariantProductsPage';
 import VariantProductBatchOrderedTestsPage from './components/VariantProductBatchOrderedTestsPage';
 import DiagnosticsPage from './components/DiagnosticsPage';
@@ -136,10 +137,22 @@ function App() {
                         path="/product-variants/finished-product-control/incorrect"
                         element={
                             <VariantProductBatchOrderedTestsPage
-                                title="Produkty spakowane / Warianty - Kontrola produktu gotowego - Błędne"
+                                title="Produkty spakowane / Warianty - Kontrola produktu gotowego - Do wyjaśnienia"
                                 description="Widok kontroli produktu gotowego z wykrytymi niezgodnościami."
                                 enableFinishedProductControl
                                 finishedProductControlFilter="incorrect"
+                                allowCreateFinishedProductControl={false}
+                            />
+                        }
+                    />
+                    <Route
+                        path="/product-variants/finished-product-control/archive"
+                        element={
+                            <VariantProductBatchOrderedTestsPage
+                                title="Produkty spakowane / Warianty - Kontrola produktu gotowego - Archiwum"
+                                description="Archiwalna lista kontroli produktu gotowego."
+                                enableFinishedProductControl
+                                finishedProductControlFilter="archived"
                                 allowCreateFinishedProductControl={false}
                             />
                         }
@@ -163,6 +176,7 @@ function App() {
                                 title="Produkty spakowane / Warianty - Do zwolnienia warunkowe"
                                 description="Widok prezentuje partie wariantów oczekujące na zwolnienie warunkowe."
                                 archiveMode
+                                archiveFilter="conditional_release"
                             />
                         }
                     />
@@ -173,10 +187,12 @@ function App() {
                                 title="Produkty spakowane / Warianty - Archiwum"
                                 description="Widok archiwalnych pozycji dla wariantów produktów."
                                 archiveMode
+                                archiveFilter="history"
                             />
                         }
                     />
                     <Route path="/settings" element={<SettingsPage />} />
+                    <Route path="/table-cleanup" element={<TableCleanupPage />} />
                     <Route path="/brd" element={<BrdPage />} />
                     <Route path="/asana" element={<AsanaPage />} />
                     <Route path="/diagnostics" element={<DiagnosticsPage />} />

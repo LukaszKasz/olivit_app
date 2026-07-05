@@ -81,6 +81,8 @@ class VariantProductBatchTestOrderResponse(BaseModel):
     id: int
     test_order_id: Optional[int] = None
     original_test_order_id: Optional[int] = None
+    related_label_controls_count: int = 0
+    related_label_controls_resolved_count: int = 0
     label_control_id: Optional[int] = None
     sku: str
     project_number: Optional[str] = None
@@ -128,3 +130,24 @@ class VariantProductBatchTestOrderResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class VariantProductBatchRelatedLabelControlResponse(BaseModel):
+    id: int
+    ordered_test_id: Optional[int] = None
+    sku: str
+    name: str
+    ean: str
+    laboratory_name: Optional[str] = None
+    asana_task_number: Optional[str] = None
+    label_status: str
+    product_batch_number: str
+    product_expiry_date: str
+
+    class Config:
+        from_attributes = True
+
+
+class VariantProductBatchRelatedLabelControlsResponse(BaseModel):
+    order_id: int
+    related_label_controls: list[VariantProductBatchRelatedLabelControlResponse]

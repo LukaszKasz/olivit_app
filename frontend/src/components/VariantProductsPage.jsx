@@ -262,6 +262,7 @@ function VariantProductsPage() {
                     name: product.name,
                     ean: product.ean,
                     batchNumber: '',
+                    selected: true,
                 })),
             });
             setError('');
@@ -305,7 +306,10 @@ function VariantProductsPage() {
             return;
         }
 
-        const rowsToSave = [bulkBatchDialog.targetRow, ...bulkBatchDialog.relatedRows].filter((row, index, allRows) => (
+        const rowsToSave = [
+            bulkBatchDialog.targetRow,
+            ...bulkBatchDialog.relatedRows.filter((row) => row.selected),
+        ].filter((row, index, allRows) => (
             index === allRows.findIndex((candidate) => getVariantRowKey(candidate) === getVariantRowKey(row))
         ));
         const hasMissingBatchNumbers = rowsToSave.some((row) => !row.batchNumber.trim());
@@ -362,7 +366,7 @@ function VariantProductsPage() {
         || !bulkBatchDialog.expiryDate.trim()
         || !bulkBatchDialog.plannedTestDate.trim()
         || !bulkBatchDialog.targetRow.batchNumber.trim()
-        || bulkBatchDialog.relatedRows.some((row) => !row.batchNumber.trim())
+        || bulkBatchDialog.relatedRows.some((row) => row.selected && !row.batchNumber.trim())
         || bulkBatchDialog.saving;
 
     return (
@@ -806,14 +810,30 @@ function VariantProductsPage() {
                                     ) : (
                                         <div className="px-5 py-5">
                                             <div className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
-                                                <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,2fr)_minmax(220px,1fr)] gap-3 border-b border-slate-200 px-4 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                                                <div className="grid grid-cols-[56px_minmax(0,1fr)_minmax(0,2fr)_minmax(220px,1fr)] gap-3 border-b border-slate-200 px-4 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                                                    <div>Zapisz</div>
                                                     <div>Numer wariantu</div>
                                                     <div>Nazwa</div>
                                                     <div>Numer serii</div>
                                                 </div>
                                                 <div className="divide-y divide-slate-200">
                                                     {bulkBatchDialog.relatedRows.map((row) => (
-                                                        <div key={row.id} className="grid grid-cols-[minmax(0,1fr)_minmax(0,2fr)_minmax(220px,1fr)] gap-3 px-4 py-3 text-sm text-slate-700">
+                                                        <div key={row.id} className="grid grid-cols-[56px_minmax(0,1fr)_minmax(0,2fr)_minmax(220px,1fr)] gap-3 px-4 py-3 text-sm text-slate-700">
+                                                            <div className="flex items-center">
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={row.selected}
+                                                                    onChange={(event) => setBulkBatchDialog((current) => ({
+                                                                        ...current,
+                                                                        relatedRows: current.relatedRows.map((relatedRow) => (
+                                                                            relatedRow.id === row.id
+                                                                                ? { ...relatedRow, selected: event.target.checked }
+                                                                                : relatedRow
+                                                                        )),
+                                                                    }))}
+                                                                    aria-label={`Zapisz produkt ${row.sku} do kontroli produktu gotowego`}
+                                                                />
+                                                            </div>
                                                             <div className="font-semibold text-slate-900">{row.sku}</div>
                                                             <div>{row.name}</div>
                                                             <input

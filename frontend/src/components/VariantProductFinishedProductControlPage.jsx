@@ -278,21 +278,24 @@ function VariantProductFinishedProductControlPage() {
                                         aria-label="Zaznacz wszystkie widoczne wiersze"
                                     />
                                 </th>
+                                <th className="px-6 py-4">ID badania</th>
+                                <th className="px-6 py-4">ID badania pierwotnego</th>
+                                <th className="px-6 py-4">ID kontroli etykiet</th>
                                 <th className="px-6 py-4">Numer projektu</th>
                                 <th className="px-6 py-4">Numer wariantu</th>
                                 <th className="w-[22rem] min-w-[22rem] px-6 py-4">Nazwa</th>
                                 <th className="px-6 py-4">EAN</th>
                                 <th className="px-6 py-4">Numer w Asana</th>
+                                <th className="px-6 py-4">Laboratorium</th>
                                 <th className="px-6 py-4">Numer serii</th>
                                 <th className="px-6 py-4">Data dodania serii</th>
                                 <th className="px-6 py-4">Data zlecenia</th>
-                                <th className="px-6 py-4">Laboratorium</th>
                                 <th className="px-6 py-4">Materiał</th>
                                 <th className="px-6 py-4">Nazwa produktu</th>
                                 <th className="px-6 py-4">Nr projektowy</th>
                                 <th className="px-6 py-4">EAN produktu</th>
                                 <th className="px-6 py-4">Seria produktu</th>
-                                <th className="px-6 py-4">Data ważności</th>
+                                <th className="px-6 py-4">Data ważności produktu</th>
                                 <th className="px-6 py-4">Data kontroli</th>
                                 <th className="px-6 py-4">Wersja rynku</th>
                                 <th className="px-6 py-4">Substancje vs PDS</th>
@@ -316,13 +319,13 @@ function VariantProductFinishedProductControlPage() {
                         <tbody>
                             {loading ? (
                                 <tr className="border-t border-slate-100">
-                                    <td colSpan="34" className="px-6 py-10 text-center text-slate-500">
+                                    <td colSpan="37" className="px-6 py-10 text-center text-slate-500">
                                         Ładowanie zleconych badań partii...
                                     </td>
                                 </tr>
                             ) : filteredRows.length === 0 ? (
                                 <tr className="border-t border-slate-100">
-                                    <td colSpan="34" className="px-6 py-10 text-center text-slate-500">
+                                    <td colSpan="37" className="px-6 py-10 text-center text-slate-500">
                                         Brak wyników dla podanego wyszukiwania.
                                     </td>
                                 </tr>
@@ -341,15 +344,18 @@ function VariantProductFinishedProductControlPage() {
                                                 aria-label={`Zaznacz wiersz ${row.sku}`}
                                             />
                                         </td>
+                                        <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.test_order_id ?? '—'}</td>
+                                        <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.original_test_order_id ?? '—'}</td>
+                                        <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.label_control_id ?? '—'}</td>
                                         <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.project_number || '—'}</td>
                                         <td className="whitespace-nowrap px-6 py-4 font-semibold text-slate-900">{row.sku}</td>
                                         <td className="w-[22rem] min-w-[22rem] px-6 py-4"><TwoLineNameCell>{row.name}</TwoLineNameCell></td>
                                         <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.ean}</td>
                                         <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.asana_task_number || '—'}</td>
+                                        <td className="px-6 py-4 text-slate-700">{row.laboratory_name || '—'}</td>
                                         <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.batch_number}</td>
                                         <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.batch_added_at ? new Date(row.batch_added_at).toLocaleString('pl-PL') : '—'}</td>
                                         <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.ordered_at ? new Date(row.ordered_at).toLocaleString('pl-PL') : '—'}</td>
-                                        <td className="px-6 py-4 text-slate-700">{row.laboratory_name || '—'}</td>
                                         <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.printed_material_type || '—'}</td>
                                         <td className="px-6 py-4 text-slate-700">{row.product_name || '—'}</td>
                                         <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.product_project_number || '—'}</td>

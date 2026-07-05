@@ -15,12 +15,18 @@ const TEST_STATUS_META = {
 };
 const LABEL_STATUS_META = {
     current: { label: 'Bieżące', className: 'bg-sky-100 text-sky-800' },
-    incorrect: { label: 'Błędne', className: 'bg-rose-100 text-rose-800' },
+    in_progress: { label: 'W trakcie', className: 'bg-amber-100 text-amber-800' },
+    incorrect: { label: 'Do wyjaśnienia', className: 'bg-rose-100 text-rose-800' },
+    archived: { label: 'Archiwum', className: 'bg-slate-200 text-slate-800' },
     correct: { label: 'Poprawne', className: 'bg-emerald-100 text-emerald-800' },
 };
 
 function buildDefaultCoaConclusion(projectNumber) {
     return `The product meets the requirements of the product specification in accordance with the product sheet ${projectNumber}.\nProdukt spełnia wymagania specyfikacji produktu zgodnie z kartą produktu ${projectNumber}.`;
+}
+
+function getTodayDateValue() {
+    return new Date().toISOString().slice(0, 10);
 }
 
 const CONTROL_QUESTION_FIELDS = [
@@ -122,7 +128,7 @@ function createInitialForm(order = null) {
         product_ean_number: '',
         product_batch_number: '',
         product_expiry_date: '',
-        control_date: '',
+        control_date: order?.control_date || getTodayDateValue(),
         market_label_version: '',
         active_substances_match_pds: '',
         active_substances_match_pds_note: '',
@@ -266,6 +272,7 @@ function VariantProductBatchOrderedTestsPage({
     description = 'Dane pobierane z tabeli zleconych badań partii wariantów w bazie PostgreSQL.',
     enableFinishedProductControl = false,
     archiveMode = false,
+    archiveFilter = 'all',
     viewMode = 'ordered_tests',
     finishedProductControlFilter = 'all',
     allowCreateFinishedProductControl = true,
@@ -329,12 +336,22 @@ function VariantProductBatchOrderedTestsPage({
         saving: false,
         labelStatus: 'incorrect',
     });
+    const [relatedProductsDialog, setRelatedProductsDialog] = useState({
+        open: false,
+        loading: false,
+        moving: false,
+        row: null,
+        controls: [],
+        selectedControlIds: [],
+        error: '',
+    });
     const [retestDialog, setRetestDialog] = useState({
         open: false,
         saving: false,
         form: createRetestForm(),
     });
     const highlightNegativeFinishedControlValues = enableFinishedProductControl && finishedProductControlFilter === 'incorrect';
+    const isCurrentFinishedProductControlView = enableFinishedProductControl && finishedProductControlFilter === 'current';
     const isAllView = !enableFinishedProductControl && !archiveMode && viewMode === 'all';
     const isReleasedView = !enableFinishedProductControl && !archiveMode && viewMode === 'released';
 
@@ -576,7 +593,7 @@ function VariantProductBatchOrderedTestsPage({
                 setRows(await loadRows());
             }
             setSelectedRowIds([]);
-            setSuccess(`Zapisano kontrolę produktu gotowego dla ${dialog.form.sku} i przeniesiono do zakładki ${statusDecisionDialog.labelStatus === 'incorrect' ? 'Błędne' : 'Poprawne'}.`);
+            setSuccess(`Zapisano kontrolę produktu gotowego dla ${dialog.form.sku} i przeniesiono do zakładki ${statusDecisionDialog.labelStatus === 'incorrect' ? 'Do wyjaśnienia' : 'Poprawne'}.`);
             setError('');
             setDialogError('');
             setDialog({
@@ -618,6 +635,20 @@ function VariantProductBatchOrderedTestsPage({
             }
 
             if (finishedProductControlFilter === 'incorrect' && labelStatus !== 'incorrect') {
+                return false;
+            }
+
+            if (finishedProductControlFilter === 'archived' && labelStatus !== 'archived') {
+                return false;
+            }
+        }
+
+        if (archiveMode) {
+            const workflowStatus = row.workflow_status || '';
+            if (archiveFilter === 'conditional_release' && workflowStatus !== 'archive') {
+                return false;
+            }
+            if (archiveFilter === 'history' && workflowStatus === 'archive') {
                 return false;
             }
         }
@@ -670,7 +701,7 @@ function VariantProductBatchOrderedTestsPage({
         setMoveDialog({
             open: true,
             saving: false,
-            targetStatus: viewMode === 'to_clarify' ? 'ordered_tests' : 'archive',
+            targetStatus: viewMode === 'to_clarify' ? 'ordered_tests' : 'to_clarify',
             note: '',
         });
     };
@@ -683,7 +714,7 @@ function VariantProductBatchOrderedTestsPage({
         setMoveDialog({
             open: false,
             saving: false,
-            targetStatus: viewMode === 'to_clarify' ? 'ordered_tests' : 'archive',
+            targetStatus: viewMode === 'to_clarify' ? 'ordered_tests' : 'to_clarify',
             note: '',
         });
     };
@@ -735,6 +766,119 @@ function VariantProductBatchOrderedTestsPage({
             saving: false,
             form: createRetestForm(),
         });
+    };
+
+    const openRelatedProductsDialog = async (row) => {
+        try {
+            setRelatedProductsDialog({
+                open: true,
+                loading: true,
+                moving: false,
+                row,
+                controls: [],
+                selectedControlIds: [],
+                error: '',
+            });
+            const data = await variantProductsAPI.getBatchRelatedLabelControls(row.test_order_id ?? row.id);
+            const controls = Array.isArray(data?.related_label_controls) ? data.related_label_controls : [];
+            setRelatedProductsDialog({
+                open: true,
+                loading: false,
+                moving: false,
+                row,
+                controls,
+                selectedControlIds: controls.map((control) => control.id),
+                error: '',
+            });
+            setError('');
+        } catch (err) {
+            setRelatedProductsDialog({
+                open: false,
+                loading: false,
+                moving: false,
+                row: null,
+                controls: [],
+                selectedControlIds: [],
+                error: '',
+            });
+            setError(err?.response?.data?.detail || err.message || 'Nie udało się pobrać powiązanych produktów.');
+        }
+    };
+
+    const closeRelatedProductsDialog = () => {
+        if (relatedProductsDialog.loading) {
+            return;
+        }
+
+        setRelatedProductsDialog({
+            open: false,
+            loading: false,
+            moving: false,
+            row: null,
+            controls: [],
+            selectedControlIds: [],
+            error: '',
+        });
+    };
+
+    const toggleRelatedControlSelection = (controlId) => {
+        setRelatedProductsDialog((current) => ({
+            ...current,
+            selectedControlIds: current.selectedControlIds.includes(controlId)
+                ? current.selectedControlIds.filter((id) => id !== controlId)
+                : [...current.selectedControlIds, controlId],
+        }));
+    };
+
+    const handleMoveRelatedProducts = async (target) => {
+        if (!relatedProductsDialog.row || relatedProductsDialog.selectedControlIds.length === 0) {
+            return;
+        }
+
+        const unresolvedControls = relatedProductsDialog.controls.filter(
+            (control) => (control.label_status || 'current') === 'current'
+                && !relatedProductsDialog.selectedControlIds.includes(control.id)
+        );
+        if (unresolvedControls.length > 0) {
+            setRelatedProductsDialog((current) => ({
+                ...current,
+                error: "Nie można zwolnić produtu z etykietą o statusie Bieżące",
+            }));
+            return;
+        }
+
+        try {
+            setRelatedProductsDialog((current) => ({ ...current, moving: true, error: '' }));
+
+            await variantProductsAPI.updateFinishedProductControlsStatus({
+                ids: relatedProductsDialog.selectedControlIds,
+                label_status: target === 'released' ? 'correct' : 'incorrect',
+            });
+
+            if (target === 'released') {
+                await variantProductsAPI.updateBatchTest(relatedProductsDialog.row.test_order_id ?? relatedProductsDialog.row.id, {
+                    workflow_status: 'released',
+                });
+            } else {
+                await variantProductsAPI.archiveBatchTests([relatedProductsDialog.row.test_order_id ?? relatedProductsDialog.row.id]);
+            }
+
+            setRows(await loadRows());
+            setSelectedRowIds([]);
+            setSuccess(
+                target === 'released'
+                    ? 'Przeniesiono badanie do zakładki Do zwolnienia.'
+                    : 'Przeniesiono badanie do zakładki Do zwolnienia warunkowe.'
+            );
+            setError('');
+            closeRelatedProductsDialog();
+        } catch (err) {
+            setRelatedProductsDialog((current) => ({
+                ...current,
+                moving: false,
+                error: err?.response?.data?.detail || err.message || 'Nie udało się przenieść wybranych produktów.',
+            }));
+        }
     };
 
     const updateRetestField = (field, value) => {
@@ -791,7 +935,9 @@ function VariantProductBatchOrderedTestsPage({
             setSelectedRowIds([]);
             setSuccess(
                 finishedControlMoveDialog.labelStatus === 'incorrect'
-                    ? `Przeniesiono ${selectedRowIds.length} pozycji do zakładki Błędne.`
+                    ? `Przeniesiono ${selectedRowIds.length} pozycji do zakładki Do wyjaśnienia.`
+                    : finishedControlMoveDialog.labelStatus === 'archived'
+                        ? `Przeniesiono ${selectedRowIds.length} pozycji do zakładki Archiwum.`
                     : `Przeniesiono ${selectedRowIds.length} pozycji do zakładki Poprawne.`
             );
             setError('');
@@ -799,6 +945,18 @@ function VariantProductBatchOrderedTestsPage({
         } catch (err) {
             setError(err?.response?.data?.detail || err.message || 'Nie udało się przenieść pozycji.');
             setFinishedControlMoveDialog((current) => ({ ...current, saving: false }));
+        }
+    };
+
+    const handleRelabelFinishedControls = async () => {
+        try {
+            await variantProductsAPI.relabelFinishedProductControls(selectedRowIds);
+            setRows(await loadRows());
+            setSelectedRowIds([]);
+            setSuccess(`Przetykietowano ${selectedRowIds.length} pozycji. Poprzednie wpisy trafiły do Archiwum, a nowe dodano do Bieżące.`);
+            setError('');
+        } catch (err) {
+            setError(err?.response?.data?.detail || err.message || 'Nie udało się wykonać przetykietowania.');
         }
     };
 
@@ -1038,6 +1196,9 @@ function VariantProductBatchOrderedTestsPage({
     const previewDocument = documentsDialog.previewIndex !== null
         ? documentsDialog.files[documentsDialog.previewIndex]
         : null;
+    const relatedProductsResolvedCount = relatedProductsDialog.controls.filter(
+        (control) => (control.label_status || 'current') !== 'current'
+    ).length;
     const showClarificationColumn = !enableFinishedProductControl && (viewMode === 'to_clarify' || viewMode === 'all');
     const moveOptions = viewMode === 'to_clarify'
         ? [
@@ -1117,11 +1278,45 @@ function VariantProductBatchOrderedTestsPage({
                     {!enableFinishedProductControl && !archiveMode && !isAllView && !isReleasedView && (
                         <button
                             type="button"
+                            onClick={() => openRelatedProductsDialog(selectedRowIds.length === 1 ? rows.find((row) => row.id === selectedRowIds[0]) : null)}
+                            className="rounded-2xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                            disabled={selectedRowIds.length !== 1}
+                        >
+                            Zwolnienie
+                        </button>
+                    )}
+                    {!enableFinishedProductControl && !archiveMode && !isAllView && !isReleasedView && (
+                        <button
+                            type="button"
                             onClick={openMoveDialog}
                             className="rounded-2xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
                             disabled={selectedRowIds.length === 0}
                         >
-                            Przenieś
+                            {viewMode === 'to_clarify' ? 'Przenieś' : 'Do wyjaśnienia'}
+                        </button>
+                    )}
+                    {enableFinishedProductControl && finishedProductControlFilter === 'incorrect' && (
+                        <button
+                            type="button"
+                            onClick={handleRelabelFinishedControls}
+                            className="rounded-2xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                            disabled={selectedRowIds.length === 0}
+                        >
+                            Przetykietowanie
+                        </button>
+                    )}
+                    {enableFinishedProductControl && finishedProductControlFilter === 'incorrect' && (
+                        <button
+                            type="button"
+                            onClick={() => setFinishedControlMoveDialog({
+                                open: true,
+                                saving: false,
+                                labelStatus: 'archived',
+                            })}
+                            className="rounded-2xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                            disabled={selectedRowIds.length === 0}
+                        >
+                            Archiwizuj
                         </button>
                     )}
                     {enableFinishedProductControl && finishedProductControlFilter === 'incorrect' && (
@@ -1187,38 +1382,49 @@ function VariantProductBatchOrderedTestsPage({
                                     </th>
                                     <th className="px-6 py-4">ID badania</th>
                                     <th className="px-6 py-4">ID badania pierwotnego</th>
-                                    <th className="px-6 py-4">ID kontroli etykiety</th>
+                                    <th className="px-6 py-4">ID kontroli etykiet</th>
+                                    <th className="px-6 py-4">ID kontroli etykiet pierwotnego</th>
                                     <th className="px-6 py-4">Numer projektu</th>
                                     <th className="px-6 py-4">Numer wariantu</th>
                                     <th className="w-[22rem] min-w-[22rem] px-6 py-4">Nazwa</th>
                                     <th className="px-6 py-4">EAN</th>
                                     <th className="px-6 py-4">Numer w Asana</th>
                                     <th className="px-6 py-4">Laboratorium</th>
-                                    <th className="px-6 py-4">Materiał</th>
-                                    <th className="px-6 py-4">Nazwa produktu</th>
-                                    <th className="px-6 py-4">Nr projektowy</th>
-                                    <th className="px-6 py-4">EAN produktu</th>
-                                    <th className="px-6 py-4">Seria produktu</th>
-                                    <th className="px-6 py-4">Data ważności produktu</th>
-                                    <th className="px-6 py-4">Data kontroli</th>
-                                    <th className="px-6 py-4">Wersja rynku</th>
-                                    <th className="px-6 py-4">Substancje vs PDS</th>
-                                    <th className="px-6 py-4">Wersja etykiety zgodna</th>
-                                    <th className="px-6 py-4">Błędy drukarskie</th>
-                                    <th className="px-6 py-4">Błędy graficzne</th>
-                                    <th className="px-6 py-4">Poprawność nadruku</th>
-                                    <th className="px-6 py-4">Błędy oklejenia</th>
-                                    <th className="px-6 py-4">Nakrętka</th>
-                                    <th className="px-6 py-4">Wkładka zgrzew</th>
-                                    <th className="px-6 py-4">Wkładka otwieranie</th>
-                                    <th className="px-6 py-4">Zabrudzenie</th>
-                                    <th className="px-6 py-4">Uszkodzenie</th>
-                                    <th className="px-6 py-4">Kod QR</th>
-                                    <th className="px-6 py-4">Zawartość zgodna</th>
-                                    <th className="px-6 py-4">Status etykiety</th>
-                                    <th className="px-6 py-4">Zweryfikowano</th>
-                                    <th className="px-6 py-4">Komentarz</th>
-                                    <th className="px-6 py-4">Data utworzenia</th>
+                                    {isCurrentFinishedProductControlView ? (
+                                        <>
+                                            <th className="px-6 py-4">Seria produktu</th>
+                                            <th className="px-6 py-4">Data ważności produktu</th>
+                                            <th className="px-6 py-4">Numer PO</th>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <th className="px-6 py-4">Materiał</th>
+                                            <th className="px-6 py-4">Nazwa produktu</th>
+                                            <th className="px-6 py-4">Nr projektowy</th>
+                                            <th className="px-6 py-4">EAN produktu</th>
+                                            <th className="px-6 py-4">Seria produktu</th>
+                                            <th className="px-6 py-4">Data ważności produktu</th>
+                                            <th className="px-6 py-4">Data kontroli</th>
+                                            <th className="px-6 py-4">Wersja rynku</th>
+                                            <th className="px-6 py-4">Substancje vs PDS</th>
+                                            <th className="px-6 py-4">Wersja etykiety zgodna</th>
+                                            <th className="px-6 py-4">Błędy drukarskie</th>
+                                            <th className="px-6 py-4">Błędy graficzne</th>
+                                            <th className="px-6 py-4">Poprawność nadruku</th>
+                                            <th className="px-6 py-4">Błędy oklejenia</th>
+                                            <th className="px-6 py-4">Nakrętka</th>
+                                            <th className="px-6 py-4">Wkładka zgrzew</th>
+                                            <th className="px-6 py-4">Wkładka otwieranie</th>
+                                            <th className="px-6 py-4">Zabrudzenie</th>
+                                            <th className="px-6 py-4">Uszkodzenie</th>
+                                            <th className="px-6 py-4">Kod QR</th>
+                                            <th className="px-6 py-4">Zawartość zgodna</th>
+                                            <th className="px-6 py-4">Status etykiety</th>
+                                            <th className="px-6 py-4">Zweryfikowano</th>
+                                            <th className="px-6 py-4">Komentarz</th>
+                                            <th className="px-6 py-4">Data utworzenia</th>
+                                        </>
+                                    )}
                                 </tr>
                             ) : (
                                 <tr>
@@ -1231,6 +1437,7 @@ function VariantProductBatchOrderedTestsPage({
                                         />
                                     </th>
                                     <th className="px-6 py-4">ID badania</th>
+                                    <th className="px-6 py-4">Informacja o zwolnieniu</th>
                                     <th className="px-6 py-4">ID badania pierwotnego</th>
                                     <th className="px-6 py-4">ID kontroli etykiety</th>
                                     <th className="px-6 py-4">Numer projektu</th>
@@ -1242,7 +1449,7 @@ function VariantProductBatchOrderedTestsPage({
                                     <th className="px-6 py-4">Koszt badania</th>
                                     <th className="px-6 py-4">Numer serii</th>
                                     <th className="px-6 py-4">Status badań</th>
-                                    <th className="px-6 py-4">Status etykiety</th>
+                                    <th className="px-6 py-4">Status etykiet</th>
                                     <th className="px-6 py-4">Data produkcji</th>
                                     <th className="px-6 py-4">Data ważności</th>
                                     <th className="px-6 py-4">Plan. realizacji</th>
@@ -1279,13 +1486,13 @@ function VariantProductBatchOrderedTestsPage({
                         <tbody>
                             {loading ? (
                                 <tr className="border-t border-slate-100">
-                                    <td colSpan={enableFinishedProductControl ? 35 : showClarificationColumn ? 44 : 43} className="px-6 py-10 text-center text-slate-500">
+                                    <td colSpan={enableFinishedProductControl ? (isCurrentFinishedProductControlView ? 14 : 35) : showClarificationColumn ? 46 : 45} className="px-6 py-10 text-center text-slate-500">
                                         {enableFinishedProductControl ? 'Ładowanie kontroli produktu gotowego...' : 'Ładowanie zleconych badań partii...'}
                                     </td>
                                 </tr>
                             ) : filteredRows.length === 0 ? (
                                 <tr className="border-t border-slate-100">
-                                    <td colSpan={enableFinishedProductControl ? 35 : showClarificationColumn ? 44 : 43} className="px-6 py-10 text-center text-slate-500">
+                                    <td colSpan={enableFinishedProductControl ? (isCurrentFinishedProductControlView ? 14 : 35) : showClarificationColumn ? 46 : 45} className="px-6 py-10 text-center text-slate-500">
                                         Brak wyników dla podanego wyszukiwania.
                                     </td>
                                 </tr>
@@ -1308,12 +1515,26 @@ function VariantProductBatchOrderedTestsPage({
                                         <td className="whitespace-nowrap px-6 py-4 text-slate-700">
                                             {row.test_order_id ?? '—'}
                                         </td>
+                                        {!enableFinishedProductControl && (
+                                            <td className="whitespace-nowrap px-6 py-4 text-slate-700">
+                                                {(row.related_label_controls_count || 0) > 0 ? (
+                                                    `${row.related_label_controls_count || 0}/${row.related_label_controls_resolved_count || 0}`
+                                                ) : (
+                                                    '—'
+                                                )}
+                                            </td>
+                                        )}
                                         <td className="whitespace-nowrap px-6 py-4 text-slate-700">
                                             {row.original_test_order_id ?? '—'}
                                         </td>
                                         <td className="whitespace-nowrap px-6 py-4 text-slate-700">
                                             {row.label_control_id ?? '—'}
                                         </td>
+                                        {enableFinishedProductControl && (
+                                            <td className="whitespace-nowrap px-6 py-4 text-slate-700">
+                                                {row.original_label_control_id ?? '—'}
+                                            </td>
+                                        )}
                                         <td className="whitespace-nowrap px-6 py-4 text-slate-700">
                                             {row.project_number || '—'}
                                         </td>
@@ -1326,31 +1547,41 @@ function VariantProductBatchOrderedTestsPage({
                                                 <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.ean}</td>
                                                 <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.asana_task_number || '—'}</td>
                                                 <td className="px-6 py-4 text-slate-700">{row.laboratory_name || '—'}</td>
-                                                <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.printed_material_type || '—'}</td>
-                                                <td className="px-6 py-4 text-slate-700">{row.product_name || '—'}</td>
-                                                <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.product_project_number || '—'}</td>
-                                                <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.product_ean_number || '—'}</td>
-                                                <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.product_batch_number || '—'}</td>
-                                                <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.product_expiry_date || '—'}</td>
-                                                <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.control_date || '—'}</td>
-                                                <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.market_label_version || '—'}</td>
-                                                <td className="whitespace-nowrap px-6 py-4 text-slate-700">{renderFinishedControlValue(row.active_substances_match_pds, highlightNegativeFinishedControlValues)}</td>
-                                                <td className="whitespace-nowrap px-6 py-4 text-slate-700">{renderFinishedControlValue(row.label_version_matches_used_version, highlightNegativeFinishedControlValues)}</td>
-                                                <td className="whitespace-nowrap px-6 py-4 text-slate-700">{renderFinishedControlValue(row.has_printing_errors, highlightNegativeFinishedControlValues)}</td>
-                                                <td className="whitespace-nowrap px-6 py-4 text-slate-700">{renderFinishedControlValue(row.has_graphic_design_errors, highlightNegativeFinishedControlValues)}</td>
-                                                <td className="whitespace-nowrap px-6 py-4 text-slate-700">{renderFinishedControlValue(row.print_correctness, highlightNegativeFinishedControlValues)}</td>
-                                                <td className="whitespace-nowrap px-6 py-4 text-slate-700">{renderFinishedControlValue(row.has_labeling_errors, highlightNegativeFinishedControlValues)}</td>
-                                                <td className="whitespace-nowrap px-6 py-4 text-slate-700">{renderFinishedControlValue(row.cap_is_correct, highlightNegativeFinishedControlValues)}</td>
-                                                <td className="whitespace-nowrap px-6 py-4 text-slate-700">{renderFinishedControlValue(row.induction_seal_weld_correct, highlightNegativeFinishedControlValues)}</td>
-                                                <td className="whitespace-nowrap px-6 py-4 text-slate-700">{renderFinishedControlValue(row.induction_seal_opening_correct, highlightNegativeFinishedControlValues)}</td>
-                                                <td className="whitespace-nowrap px-6 py-4 text-slate-700">{renderFinishedControlValue(row.package_is_dirty, highlightNegativeFinishedControlValues)}</td>
-                                                <td className="whitespace-nowrap px-6 py-4 text-slate-700">{renderFinishedControlValue(row.package_is_damaged, highlightNegativeFinishedControlValues)}</td>
-                                                <td className="whitespace-nowrap px-6 py-4 text-slate-700">{renderFinishedControlValue(row.qr_code_is_active, highlightNegativeFinishedControlValues)}</td>
-                                                <td className="whitespace-nowrap px-6 py-4 text-slate-700">{renderFinishedControlValue(row.package_contents_match_card, highlightNegativeFinishedControlValues)}</td>
-                                                <td className="whitespace-nowrap px-6 py-4 text-slate-700">{LABEL_STATUS_META[row.label_status || 'current']?.label || '—'}</td>
-                                                <td className="whitespace-nowrap px-6 py-4 text-slate-700">{renderFinishedControlValue(row.product_verified, highlightNegativeFinishedControlValues)}</td>
-                                                <td className="px-6 py-4 text-slate-700">{row.comment || '—'}</td>
-                                                <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.created_at ? new Date(row.created_at).toLocaleString('pl-PL') : '—'}</td>
+                                                {isCurrentFinishedProductControlView ? (
+                                                    <>
+                                                        <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.product_batch_number || '—'}</td>
+                                                        <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.product_expiry_date || '—'}</td>
+                                                        <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.po_number || '—'}</td>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.printed_material_type || '—'}</td>
+                                                        <td className="px-6 py-4 text-slate-700">{row.product_name || '—'}</td>
+                                                        <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.product_project_number || '—'}</td>
+                                                        <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.product_ean_number || '—'}</td>
+                                                        <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.product_batch_number || '—'}</td>
+                                                        <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.product_expiry_date || '—'}</td>
+                                                        <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.control_date || '—'}</td>
+                                                        <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.market_label_version || '—'}</td>
+                                                        <td className="whitespace-nowrap px-6 py-4 text-slate-700">{renderFinishedControlValue(row.active_substances_match_pds, highlightNegativeFinishedControlValues)}</td>
+                                                        <td className="whitespace-nowrap px-6 py-4 text-slate-700">{renderFinishedControlValue(row.label_version_matches_used_version, highlightNegativeFinishedControlValues)}</td>
+                                                        <td className="whitespace-nowrap px-6 py-4 text-slate-700">{renderFinishedControlValue(row.has_printing_errors, highlightNegativeFinishedControlValues)}</td>
+                                                        <td className="whitespace-nowrap px-6 py-4 text-slate-700">{renderFinishedControlValue(row.has_graphic_design_errors, highlightNegativeFinishedControlValues)}</td>
+                                                        <td className="whitespace-nowrap px-6 py-4 text-slate-700">{renderFinishedControlValue(row.print_correctness, highlightNegativeFinishedControlValues)}</td>
+                                                        <td className="whitespace-nowrap px-6 py-4 text-slate-700">{renderFinishedControlValue(row.has_labeling_errors, highlightNegativeFinishedControlValues)}</td>
+                                                        <td className="whitespace-nowrap px-6 py-4 text-slate-700">{renderFinishedControlValue(row.cap_is_correct, highlightNegativeFinishedControlValues)}</td>
+                                                        <td className="whitespace-nowrap px-6 py-4 text-slate-700">{renderFinishedControlValue(row.induction_seal_weld_correct, highlightNegativeFinishedControlValues)}</td>
+                                                        <td className="whitespace-nowrap px-6 py-4 text-slate-700">{renderFinishedControlValue(row.induction_seal_opening_correct, highlightNegativeFinishedControlValues)}</td>
+                                                        <td className="whitespace-nowrap px-6 py-4 text-slate-700">{renderFinishedControlValue(row.package_is_dirty, highlightNegativeFinishedControlValues)}</td>
+                                                        <td className="whitespace-nowrap px-6 py-4 text-slate-700">{renderFinishedControlValue(row.package_is_damaged, highlightNegativeFinishedControlValues)}</td>
+                                                        <td className="whitespace-nowrap px-6 py-4 text-slate-700">{renderFinishedControlValue(row.qr_code_is_active, highlightNegativeFinishedControlValues)}</td>
+                                                        <td className="whitespace-nowrap px-6 py-4 text-slate-700">{renderFinishedControlValue(row.package_contents_match_card, highlightNegativeFinishedControlValues)}</td>
+                                                        <td className="whitespace-nowrap px-6 py-4 text-slate-700">{LABEL_STATUS_META[row.label_status || 'current']?.label || '—'}</td>
+                                                        <td className="whitespace-nowrap px-6 py-4 text-slate-700">{renderFinishedControlValue(row.product_verified, highlightNegativeFinishedControlValues)}</td>
+                                                        <td className="px-6 py-4 text-slate-700">{row.comment || '—'}</td>
+                                                        <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.created_at ? new Date(row.created_at).toLocaleString('pl-PL') : '—'}</td>
+                                                    </>
+                                                )}
                                             </>
                                         ) : (
                                             <>
@@ -1512,7 +1743,8 @@ function VariantProductBatchOrderedTestsPage({
                                 onChange={(event) => setFinishedControlMoveDialog((current) => ({ ...current, labelStatus: event.target.value }))}
                                 className="mt-3 w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-500 focus:bg-white"
                             >
-                                <option value="incorrect">Błędne</option>
+                                <option value="incorrect">Do wyjaśnienia</option>
+                                <option value="archived">Archiwum</option>
                                 <option value="correct">Poprawne</option>
                             </select>
                         </div>
@@ -1700,6 +1932,156 @@ function VariantProductBatchOrderedTestsPage({
                 </div>
             )}
 
+            {relatedProductsDialog.open && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/35 p-4">
+                    <div className="flex max-h-[calc(100vh-48px)] w-full max-w-6xl flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl">
+                        <div className="border-b border-slate-200 px-6 py-5">
+                            <h2 className="text-2xl font-semibold text-slate-900">Powiązane produkty</h2>
+                            <p className="mt-2 text-sm text-slate-600">
+                                Badanie: {relatedProductsDialog.row?.sku || '—'}
+                            </p>
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto px-6 py-5">
+                            <div className="mb-6 rounded-3xl border border-slate-200">
+                                <div className="border-b border-slate-200 bg-slate-50 px-5 py-4">
+                                    <h3 className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">Produkt do badań</h3>
+                                </div>
+                                <div className="px-5 py-5">
+                                    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
+                                        <div className="grid grid-cols-[minmax(0,140px)_minmax(0,1.6fr)_minmax(0,1fr)_minmax(0,180px)_minmax(0,180px)] gap-3 border-b border-slate-200 px-4 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                                            <div>Numer wariantu</div>
+                                            <div>Nazwa</div>
+                                            <div>EAN</div>
+                                            <div>Numer serii</div>
+                                            <div>Status badań</div>
+                                        </div>
+                                        <div className="grid grid-cols-[minmax(0,140px)_minmax(0,1.6fr)_minmax(0,1fr)_minmax(0,180px)_minmax(0,180px)] gap-3 px-4 py-3 text-sm text-slate-700">
+                                            <div className="font-semibold text-slate-900">{relatedProductsDialog.row?.sku || '—'}</div>
+                                            <div>{relatedProductsDialog.row?.name || '—'}</div>
+                                            <div>{relatedProductsDialog.row?.ean || '—'}</div>
+                                            <div>{relatedProductsDialog.row?.batch_number || '—'}</div>
+                                            <div>
+                                                <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${(TEST_STATUS_META[relatedProductsDialog.row?.workflow_status || 'ordered_tests'] || TEST_STATUS_META.ordered_tests).className}`}>
+                                                    {(TEST_STATUS_META[relatedProductsDialog.row?.workflow_status || 'ordered_tests'] || TEST_STATUS_META.ordered_tests).label}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="rounded-3xl border border-slate-200">
+                                <div className="border-b border-slate-200 bg-slate-50 px-5 py-4">
+                                    <h3 className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">
+                                        Produkty do zwolnienia {relatedProductsDialog.controls.length}/{relatedProductsResolvedCount}
+                                    </h3>
+                                </div>
+                                {relatedProductsDialog.error && (
+                                    <div className="border-b border-slate-200 px-5 py-4">
+                                        <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                                            {relatedProductsDialog.error}
+                                        </div>
+                                    </div>
+                                )}
+                                {relatedProductsDialog.loading ? (
+                                    <div className="px-5 py-8 text-sm text-slate-500">
+                                        Ładowanie danych...
+                                    </div>
+                                ) : relatedProductsDialog.controls.length === 0 ? (
+                                    <div className="px-5 py-8 text-sm text-slate-500">
+                                        Brak powiązanych produktów do kontroli etykiety.
+                                    </div>
+                                ) : (
+                                    <div className="px-5 py-5">
+                                        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
+                                            <div className="grid grid-cols-[56px_minmax(0,140px)_minmax(0,1.6fr)_minmax(0,1fr)_minmax(0,180px)_minmax(0,180px)_minmax(0,160px)] gap-3 border-b border-slate-200 px-4 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                                                <div>Zaznacz</div>
+                                                <div>Numer wariantu</div>
+                                                <div>Nazwa</div>
+                                                <div>EAN</div>
+                                                <div>Seria produktu</div>
+                                                <div>Status etykiety</div>
+                                                <div>Typ</div>
+                                            </div>
+                                            <div className="divide-y divide-slate-200">
+                                                {relatedProductsDialog.controls.map((control) => {
+                                                    const isPrimaryProduct = control.ordered_test_id === (relatedProductsDialog.row?.test_order_id ?? relatedProductsDialog.row?.id);
+                                                    return (
+                                                        <div
+                                                            key={control.id}
+                                                            className="grid grid-cols-[56px_minmax(0,140px)_minmax(0,1.6fr)_minmax(0,1fr)_minmax(0,180px)_minmax(0,180px)_minmax(0,160px)] gap-3 px-4 py-3 text-sm text-slate-700"
+                                                        >
+                                                            <div className="flex items-center">
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={relatedProductsDialog.selectedControlIds.includes(control.id)}
+                                                                    onChange={() => toggleRelatedControlSelection(control.id)}
+                                                                    aria-label={`Zaznacz produkt ${control.sku}`}
+                                                                />
+                                                            </div>
+                                                            <div className="font-semibold text-slate-900">{control.sku}</div>
+                                                            <div>{control.name}</div>
+                                                            <div>{control.ean}</div>
+                                                            <div>{control.product_batch_number || '—'}</div>
+                                                            <div>
+                                                                <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${(LABEL_STATUS_META[control.label_status || 'current'] || LABEL_STATUS_META.current).className}`}>
+                                                                    {(LABEL_STATUS_META[control.label_status || 'current'] || LABEL_STATUS_META.current).label}
+                                                                </span>
+                                                            </div>
+                                                            <div>
+                                                                {isPrimaryProduct ? (
+                                                                    <span className="inline-flex rounded-full bg-slate-900 px-3 py-1 text-xs font-semibold text-white">
+                                                                        Produkt badany
+                                                                    </span>
+                                                                ) : (
+                                                                    <span className="inline-flex rounded-full bg-slate-200 px-3 py-1 text-xs font-semibold text-slate-700">
+                                                                        Etykieta
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        <div className="flex justify-between gap-3 border-t border-slate-200 px-6 py-5">
+                            <div className="flex gap-3">
+                                <button
+                                    type="button"
+                                    onClick={() => handleMoveRelatedProducts('archive')}
+                                    className="rounded-2xl border border-slate-300 px-5 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                    disabled={relatedProductsDialog.loading || relatedProductsDialog.moving || relatedProductsDialog.selectedControlIds.length === 0}
+                                >
+                                    Do zwolnienia warunkowo
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => handleMoveRelatedProducts('released')}
+                                    className="rounded-2xl border border-slate-300 px-5 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                    disabled={relatedProductsDialog.loading || relatedProductsDialog.moving || relatedProductsDialog.selectedControlIds.length === 0}
+                                >
+                                    Do zwolnienia
+                                </button>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={closeRelatedProductsDialog}
+                                className="rounded-2xl border border-slate-300 px-5 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                                disabled={relatedProductsDialog.loading || relatedProductsDialog.moving}
+                            >
+                                Zamknij
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {dialog.open && (
                 <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/40 p-4 md:p-8">
                     <div className="flex max-h-[calc(100vh-48px)] w-full max-w-5xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl">
@@ -1711,6 +2093,9 @@ function VariantProductBatchOrderedTestsPage({
                         </div>
                         <div className="flex-1 overflow-y-auto px-6 py-6">
                             <div className="grid gap-4">
+                            <FormField label="Data" required>
+                                <input type="date" value={dialog.form.control_date} onChange={(event) => updateField('control_date', event.target.value)} className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-500" />
+                            </FormField>
                             <FormField label="Nazwa produktu" required>
                                 <input type="text" value={dialog.form.product_name} onChange={(event) => updateField('product_name', event.target.value)} className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-500" />
                             </FormField>
@@ -1726,9 +2111,6 @@ function VariantProductBatchOrderedTestsPage({
                             </FormField>
                             <FormField label="Data ważności produktu" required>
                                 <input type="date" value={dialog.form.product_expiry_date} onChange={(event) => updateField('product_expiry_date', event.target.value)} className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-500" />
-                            </FormField>
-                            <FormField label="Data" required>
-                                <input type="date" value={dialog.form.control_date} onChange={(event) => updateField('control_date', event.target.value)} className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-500" />
                             </FormField>
                             <FormField label="Numer wersji etykiety / kartonika obecny na rynku" required>
                                 <input type="text" value={dialog.form.market_label_version} onChange={(event) => updateField('market_label_version', event.target.value)} className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-500" />
@@ -1809,7 +2191,7 @@ function VariantProductBatchOrderedTestsPage({
                                     onChange={(event) => setStatusDecisionDialog((current) => ({ ...current, labelStatus: event.target.value }))}
                                     className="h-4 w-4 border-slate-300 text-slate-900 focus:ring-slate-500"
                                 />
-                                <span>Błędne</span>
+                                <span>Do wyjaśnienia</span>
                             </label>
                             <label className="flex cursor-pointer items-center gap-3 rounded-2xl border border-slate-300 px-4 py-3 text-sm text-slate-900">
                                 <input
@@ -2138,28 +2520,32 @@ function VariantProductBatchOrderedTestsPage({
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/35 p-4">
                     <div className="w-full max-w-xl rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl">
                         <div className="mb-6">
-                            <h2 className="text-2xl font-semibold text-slate-900">Przenieś</h2>
+                            <h2 className="text-2xl font-semibold text-slate-900">
+                                {viewMode === 'to_clarify' ? 'Przenieś' : 'Do wyjaśnienia'}
+                            </h2>
                             <p className="mt-2 text-sm text-slate-600">
                                 Zaznaczone pozycje: {selectedRowIds.length}
                             </p>
                         </div>
-                        <div className="mb-6">
-                            <label className="block text-xs font-semibold uppercase tracking-[0.18em] text-slate-500" htmlFor="variant-move-target-status">
-                                Status docelowy
-                            </label>
-                            <select
-                                id="variant-move-target-status"
-                                value={moveDialog.targetStatus}
-                                onChange={(event) => setMoveDialog((current) => ({ ...current, targetStatus: event.target.value }))}
-                                className="mt-3 w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-500 focus:bg-white"
-                            >
-                                {moveOptions.map((option) => (
-                                    <option key={option.value} value={option.value}>
-                                        {option.label}
-                                    </option>
-                                ))}
-                            </select>
-                        </div>
+                        {viewMode === 'to_clarify' && (
+                            <div className="mb-6">
+                                <label className="block text-xs font-semibold uppercase tracking-[0.18em] text-slate-500" htmlFor="variant-move-target-status">
+                                    Status docelowy
+                                </label>
+                                <select
+                                    id="variant-move-target-status"
+                                    value={moveDialog.targetStatus}
+                                    onChange={(event) => setMoveDialog((current) => ({ ...current, targetStatus: event.target.value }))}
+                                    className="mt-3 w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-500 focus:bg-white"
+                                >
+                                    {moveOptions.map((option) => (
+                                        <option key={option.value} value={option.value}>
+                                            {option.label}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                        )}
                         {moveDialog.targetStatus === 'to_clarify' && (
                             <div className="mb-6">
                                 <label className="block text-xs font-semibold uppercase tracking-[0.18em] text-slate-500" htmlFor="variant-clarification-note">
@@ -2190,7 +2576,7 @@ function VariantProductBatchOrderedTestsPage({
                                 disabled={moveDialog.saving || (moveDialog.targetStatus === 'to_clarify' && !moveDialog.note.trim())}
                                 className="rounded-2xl bg-slate-900 px-5 py-3 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
                             >
-                                {moveDialog.saving ? 'Przenoszenie...' : 'Przenieś'}
+                                {moveDialog.saving ? 'Przenoszenie...' : viewMode === 'to_clarify' ? 'Przenieś' : 'Do wyjaśnienia'}
                             </button>
                         </div>
                     </div>

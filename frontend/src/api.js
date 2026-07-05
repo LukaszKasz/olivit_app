@@ -120,6 +120,14 @@ export const databaseBackupAPI = {
         });
         return response.data;
     },
+    getTables: async () => {
+        const response = await api.get('/api/database/tables');
+        return response.data;
+    },
+    clearTable: async (tableName) => {
+        const response = await api.delete(`/api/database/tables/${tableName}`);
+        return response.data;
+    },
 };
 
 export const brdAPI = {
@@ -183,6 +191,10 @@ export const variantProductsAPI = {
         const response = await api.get('/api/variant-products/batches/released');
         return response.data;
     },
+    getBatchRelatedLabelControls: async (orderId) => {
+        const response = await api.get(`/api/variant-products/batches/${orderId}/related-label-controls`);
+        return response.data;
+    },
     getClarificationBatchTests: async () => {
         const response = await api.get('/api/variant-products/batches/to-clarify');
         return response.data;
@@ -221,6 +233,10 @@ export const variantProductsAPI = {
     },
     updateFinishedProductControlsStatus: async (payload) => {
         const response = await api.patch('/api/variant-products/finished-product-controls/status', payload);
+        return response.data;
+    },
+    relabelFinishedProductControls: async (ids) => {
+        const response = await api.post('/api/variant-products/finished-product-controls/relabel', { ids });
         return response.data;
     },
     getFinishedProductControls: async () => {

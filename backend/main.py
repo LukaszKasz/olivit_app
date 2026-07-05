@@ -16,7 +16,7 @@ from fastapi import FastAPI, Depends, File, HTTPException, UploadFile, status, R
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, EmailStr
-from sqlalchemy import DateTime, inspect, or_, text
+from sqlalchemy import DateTime, inspect, or_, text, func, select
 from sqlalchemy.orm import Session
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
@@ -45,7 +45,9 @@ from variant_products_api import VariantProductResponse, VariantProductsPageResp
 from variant_product_batch_orders_api import (
     VariantProductBatchArchiveRequest,
     VariantProductBatchCoARequest,
+    VariantProductBatchRelatedLabelControlsResponse,
     VariantProductBatchRetestRequest,
+    VariantProductBatchRelatedLabelControlResponse,
     VariantProductBatchTestOrderBulkCreate,
     VariantProductBatchDocumentsRequest,
     VariantProductBatchTestOrderCreate,
@@ -53,6 +55,7 @@ from variant_product_batch_orders_api import (
     VariantProductBatchTestOrderUpdate,
 )
 from variant_product_finished_product_controls_api import (
+    VariantProductFinishedProductControlBulkIds,
     VariantProductFinishedProductControlBulkStatusUpdate,
     VariantProductFinishedProductControlCreate,
     VariantProductFinishedProductControlResponse,
@@ -160,6 +163,16 @@ def get_variant_batch_row_test_order_id(row: VariantProductBatchTestOrder | Vari
     return row.id
 
 
+def get_variant_batch_related_controls_source_id(
+    row: VariantProductBatchTestOrder | VariantProductBatchTestOrderArchive,
+) -> int | None:
+    workflow_status = (getattr(row, "workflow_status", None) or "").strip()
+    original_test_order_id = getattr(row, "original_test_order_id", None)
+    if workflow_status in {"retest_ordered", "retest_requested"} and original_test_order_id is not None:
+        return original_test_order_id
+    return get_variant_batch_row_test_order_id(row) or row.id
+
+
 def parse_linked_document_names(value: str | None) -> list[str]:
     raw = (value or "").strip()
     if not raw:
@@ -205,6 +218,79 @@ def does_control_match_order(
     return True
 
 
+def does_control_match_order_group(
+    control: VariantProductFinishedProductControl,
+    order: VariantProductBatchTestOrder | VariantProductBatchTestOrderArchive,
+) -> bool:
+    control_project_number = (control.product_project_number or get_project_number_from_variant_sku(control.sku) or "").strip()
+    order_project_number = (get_project_number_from_variant_sku(order.sku) or "").strip()
+    if not control_project_number or control_project_number != order_project_number:
+        return False
+
+    control_laboratory_name = (control.laboratory_name or "").strip()
+    order_laboratory_name = (order.laboratory_name or "").strip()
+    if control_laboratory_name and order_laboratory_name and control_laboratory_name != order_laboratory_name:
+        return False
+
+    control_asana_task_number = (control.asana_task_number or "").strip()
+    order_asana_task_number = (order.asana_task_number or "").strip()
+    if control_asana_task_number and order_asana_task_number and control_asana_task_number != order_asana_task_number:
+        return False
+
+    return True
+
+
+def get_variant_batch_order_reference_timestamp(
+    order: VariantProductBatchTestOrder | VariantProductBatchTestOrderArchive,
+) -> datetime | None:
+    for field_name in ("ordered_at", "batch_added_at", "archived_at"):
+        value = getattr(order, field_name, None)
+        if value is not None:
+            return value
+    return None
+
+
+def find_group_order_for_control(
+    control: VariantProductFinishedProductControl,
+    orders: list[VariantProductBatchTestOrder],
+    archived_orders: list[VariantProductBatchTestOrderArchive],
+) -> VariantProductBatchTestOrder | VariantProductBatchTestOrderArchive | None:
+    candidates = [
+        order
+        for order in [*orders, *archived_orders]
+        if does_control_match_order_group(control, order)
+    ]
+    if not candidates:
+        return None
+    if len(candidates) == 1:
+        return candidates[0]
+
+    control_timestamp = control.created_at
+    if control_timestamp is None:
+        return None
+
+    ranked_candidates: list[tuple[float, VariantProductBatchTestOrder | VariantProductBatchTestOrderArchive]] = []
+    for order in candidates:
+        reference_timestamp = get_variant_batch_order_reference_timestamp(order)
+        if reference_timestamp is None:
+            continue
+        ranked_candidates.append((abs((reference_timestamp - control_timestamp).total_seconds()), order))
+
+    if not ranked_candidates:
+        return None
+
+    ranked_candidates.sort(key=lambda item: item[0])
+    if len(ranked_candidates) == 1:
+        return ranked_candidates[0][1]
+
+    best_diff, best_order = ranked_candidates[0]
+    second_diff, _ = ranked_candidates[1]
+    if best_diff <= 300 or best_diff + 300 < second_diff:
+        return best_order
+
+    return None
+
+
 def serialize_variant_product(product: VariantProduct) -> dict:
     return {
         "id": product.id,
@@ -220,11 +306,16 @@ def serialize_variant_batch_row(
     row: VariantProductBatchTestOrder | VariantProductBatchTestOrderArchive,
     *,
     label_control_id: int | None = None,
+    label_status: str | None = None,
+    related_label_controls_count: int = 0,
+    related_label_controls_resolved_count: int = 0,
 ) -> dict:
     return {
         "id": row.id,
         "test_order_id": get_variant_batch_row_test_order_id(row),
         "original_test_order_id": getattr(row, "original_test_order_id", None),
+        "related_label_controls_count": related_label_controls_count,
+        "related_label_controls_resolved_count": related_label_controls_resolved_count,
         "label_control_id": label_control_id,
         "sku": row.sku,
         "project_number": get_project_number_from_variant_sku(row.sku),
@@ -242,7 +333,7 @@ def serialize_variant_batch_row(
         "po_number": row.po_number,
         "workflow_status": row.workflow_status,
         "clarification_note": row.clarification_note,
-        "label_status": row.label_status,
+        "label_status": label_status if label_status is not None else row.label_status,
         "printed_material_type": row.printed_material_type,
         "product_name": row.product_name,
         "product_project_number": row.product_project_number,
@@ -286,13 +377,37 @@ def serialize_variant_batch_row(
     }
 
 
-def serialize_variant_finished_product_control_row(row: VariantProductFinishedProductControl) -> dict:
+def serialize_variant_related_label_control_row(row: VariantProductFinishedProductControl) -> dict:
+    return {
+        "id": row.id,
+        "ordered_test_id": row.ordered_test_id,
+        "sku": row.sku,
+        "name": row.name,
+        "ean": row.ean,
+        "laboratory_name": row.laboratory_name,
+        "asana_task_number": row.asana_task_number,
+        "label_status": row.label_status,
+        "product_batch_number": row.product_batch_number,
+        "product_expiry_date": row.product_expiry_date,
+    }
+
+
+def serialize_variant_finished_product_control_row(
+    row: VariantProductFinishedProductControl,
+    *,
+    original_test_order_id: int | None = None,
+    original_label_control_id: int | None = None,
+    po_number: str | None = None,
+) -> dict:
     return {
         "id": row.id,
         "ordered_test_id": row.ordered_test_id,
         "test_order_id": row.ordered_test_id,
+        "original_test_order_id": original_test_order_id,
         "label_control_id": row.id,
+        "original_label_control_id": original_label_control_id,
         "project_number": get_project_number_from_variant_sku(row.sku),
+        "po_number": po_number,
         "sku": row.sku,
         "name": row.name,
         "ean": row.ean,
@@ -358,6 +473,116 @@ def derive_variant_label_status(control: VariantProductFinishedProductControl) -
         control.product_verified != "Tak",
     ]
     return "incorrect" if any(issue_flags) else "correct"
+
+
+def does_control_belong_to_batch_group(
+    control: VariantProductFinishedProductControl,
+    row: VariantProductBatchTestOrder | VariantProductBatchTestOrderArchive,
+) -> bool:
+    test_order_id = get_variant_batch_related_controls_source_id(row)
+    if control.ordered_test_id == test_order_id:
+        return True
+
+    project_number = get_project_number_from_variant_sku(row.sku) or ""
+    if not project_number or control.product_project_number != project_number:
+        return False
+
+    if control.ordered_test_id is not None:
+        return False
+
+    row_laboratory_name = (row.laboratory_name or "").strip()
+    control_laboratory_name = (control.laboratory_name or "").strip()
+    if row_laboratory_name and control_laboratory_name != row_laboratory_name:
+        return False
+
+    row_asana_task_number = (row.asana_task_number or "").strip()
+    control_asana_task_number = (control.asana_task_number or "").strip()
+    if row_asana_task_number and control_asana_task_number != row_asana_task_number:
+        return False
+
+    return True
+
+
+def get_related_label_controls_for_batch_rows(
+    db: Session,
+    rows: list[VariantProductBatchTestOrder | VariantProductBatchTestOrderArchive],
+) -> dict[int, list[dict]]:
+    if not rows:
+        return {}
+
+    project_numbers = sorted({
+        get_project_number_from_variant_sku(row.sku)
+        for row in rows
+        if get_project_number_from_variant_sku(row.sku)
+    })
+    if not project_numbers:
+        return {get_variant_batch_row_test_order_id(row) or row.id: [] for row in rows}
+
+    controls = (
+        db.query(VariantProductFinishedProductControl)
+        .filter(VariantProductFinishedProductControl.product_project_number.in_(project_numbers))
+        .order_by(VariantProductFinishedProductControl.created_at.asc(), VariantProductFinishedProductControl.id.asc())
+        .all()
+    )
+
+    result: dict[int, list[dict]] = {}
+    for row in rows:
+        row_key = get_variant_batch_row_test_order_id(row) or row.id
+        source_test_order_id = get_variant_batch_related_controls_source_id(row)
+        matched_controls = [
+            control for control in controls if does_control_belong_to_batch_group(control, row)
+        ]
+        matched_controls.sort(
+            key=lambda control: (
+                0 if control.ordered_test_id == source_test_order_id else 1,
+                control.sku,
+                control.name,
+                control.id,
+            )
+        )
+        result[row_key] = [serialize_variant_related_label_control_row(control) for control in matched_controls]
+
+    return result
+
+
+def get_aggregated_label_status(related_controls: list[dict]) -> str | None:
+    active_statuses = [
+        (control.get("label_status") or "current")
+        for control in related_controls
+        if (control.get("label_status") or "current") != "archived"
+    ]
+    if not active_statuses:
+        return None
+    if any(status == "incorrect" for status in active_statuses):
+        return "incorrect"
+    if all(status == "current" for status in active_statuses):
+        return "current"
+    if all(status == "correct" for status in active_statuses):
+        return "correct"
+    if any(status == "current" for status in active_statuses) and any(status == "correct" for status in active_statuses):
+        return "in_progress"
+    if any(status == "current" for status in active_statuses):
+        return "current"
+    if any(status == "correct" for status in active_statuses):
+        return "correct"
+    return None
+
+
+def get_related_label_control_entities_for_batch_row(
+    db: Session,
+    row: VariantProductBatchTestOrder | VariantProductBatchTestOrderArchive,
+) -> list[VariantProductFinishedProductControl]:
+    project_number = get_project_number_from_variant_sku(row.sku)
+    if not project_number:
+        return []
+
+    controls = (
+        db.query(VariantProductFinishedProductControl)
+        .filter(VariantProductFinishedProductControl.product_project_number == project_number)
+        .order_by(VariantProductFinishedProductControl.created_at.asc(), VariantProductFinishedProductControl.id.asc())
+        .all()
+    )
+    return [control for control in controls if does_control_belong_to_batch_group(control, row)]
 
 
 def create_default_variant_finished_product_control(
@@ -477,12 +702,11 @@ def match_variant_order_for_control(
     orders: list[VariantProductBatchTestOrder],
     archived_orders: list[VariantProductBatchTestOrderArchive],
 ) -> VariantProductBatchTestOrder | VariantProductBatchTestOrderArchive | None:
-    control_batch_number = (control.product_batch_number or "").strip()
     for collection in (orders, archived_orders):
         for order in collection:
             if does_control_match_order(control, order):
                 return order
-    return None
+    return find_group_order_for_control(control, orders, archived_orders)
 
 
 def ensure_variant_product_finished_product_control_links(db: Session) -> None:
@@ -743,6 +967,49 @@ def import_database_export(payload: dict) -> dict:
                 )
 
     return imported_counts
+
+
+def build_database_tables_overview() -> list[dict]:
+    overview: list[dict] = []
+    with engine.connect() as connection:
+        for table in Base.metadata.sorted_tables:
+            row_count = connection.execute(
+                select(func.count()).select_from(table)
+            ).scalar_one()
+            overview.append({
+                "table_name": table.name,
+                "row_count": int(row_count or 0),
+            })
+    return overview
+
+
+def clear_database_table(table_name: str) -> int:
+    metadata_tables = {table.name: table for table in Base.metadata.sorted_tables}
+    table = metadata_tables.get(table_name)
+    if table is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Nie znaleziono tabeli {table_name}.",
+        )
+
+    with engine.begin() as connection:
+        deleted_count = connection.execute(
+            select(func.count()).select_from(table)
+        ).scalar_one()
+        connection.execute(table.delete())
+
+        if "id" in table.c:
+            connection.execute(
+                text(
+                    "SELECT setval("
+                    "pg_get_serial_sequence(:table_name, 'id'), "
+                    "1, false"
+                    ")"
+                ),
+                {"table_name": table.name},
+            )
+
+    return int(deleted_count or 0)
 
 
 def format_date_for_pdf(value: datetime | str | None) -> str:
@@ -1848,6 +2115,25 @@ async def import_database(
     }
 
 
+@app.get("/api/database/tables")
+def get_database_tables(current_user: User = Depends(get_current_user)):
+    _ = current_user
+    return {"tables": build_database_tables_overview()}
+
+
+@app.delete("/api/database/tables/{table_name}")
+def delete_database_table(
+    table_name: str,
+    current_user: User = Depends(get_current_user),
+):
+    _ = current_user
+    deleted_count = clear_database_table(table_name)
+    return {
+        "table_name": table_name,
+        "deleted_count": deleted_count,
+    }
+
+
 @app.get("/api/main-products", response_model=list[MainProductResponse])
 def get_main_products(
     q: Optional[str] = None,
@@ -2062,10 +2348,16 @@ def get_variant_product_batch_test_orders(
         .all()
     )
     control_map = get_variant_finished_product_control_map(db, [row.id for row in rows])
+    related_controls_map = get_related_label_controls_for_batch_rows(db, rows)
     return [
         serialize_variant_batch_row(
             row,
             label_control_id=getattr(control_map.get(row.id), "id", None),
+            label_status=get_aggregated_label_status(related_controls_map.get(row.id, [])),
+            related_label_controls_count=len(related_controls_map.get(row.id, [])),
+            related_label_controls_resolved_count=sum(
+                1 for control in related_controls_map.get(row.id, []) if (control.get("label_status") or "current") != "current"
+            ),
         )
         for row in rows
     ]
@@ -2085,10 +2377,16 @@ def get_variant_product_batch_test_orders_released(
         .all()
     )
     control_map = get_variant_finished_product_control_map(db, [row.id for row in rows])
+    related_controls_map = get_related_label_controls_for_batch_rows(db, rows)
     return [
         serialize_variant_batch_row(
             row,
             label_control_id=getattr(control_map.get(row.id), "id", None),
+            label_status=get_aggregated_label_status(related_controls_map.get(row.id, [])),
+            related_label_controls_count=len(related_controls_map.get(row.id, [])),
+            related_label_controls_resolved_count=sum(
+                1 for control in related_controls_map.get(row.id, []) if (control.get("label_status") or "current") != "current"
+            ),
         )
         for row in rows
     ]
@@ -2108,10 +2406,16 @@ def get_variant_product_batch_test_orders_to_clarify(
         .all()
     )
     control_map = get_variant_finished_product_control_map(db, [row.id for row in rows])
+    related_controls_map = get_related_label_controls_for_batch_rows(db, rows)
     return [
         serialize_variant_batch_row(
             row,
             label_control_id=getattr(control_map.get(row.id), "id", None),
+            label_status=get_aggregated_label_status(related_controls_map.get(row.id, [])),
+            related_label_controls_count=len(related_controls_map.get(row.id, [])),
+            related_label_controls_resolved_count=sum(
+                1 for control in related_controls_map.get(row.id, []) if (control.get("label_status") or "current") != "current"
+            ),
         )
         for row in rows
     ]
@@ -2134,16 +2438,65 @@ def get_variant_product_batch_test_archive(
         [row.ordered_test_id for row in rows if row.ordered_test_id is not None],
     )
     serialized_rows = []
+    related_controls_map = get_related_label_controls_for_batch_rows(db, rows)
     for row in rows:
         control = control_map.get(row.ordered_test_id) if row.ordered_test_id is not None else None
         serialized = serialize_variant_batch_row(
             row,
             label_control_id=getattr(control, "id", None),
+            label_status=get_aggregated_label_status(related_controls_map.get(get_variant_batch_row_test_order_id(row) or row.id, [])),
+            related_label_controls_count=len(related_controls_map.get(get_variant_batch_row_test_order_id(row) or row.id, [])),
+            related_label_controls_resolved_count=sum(
+                1
+                for related_control in related_controls_map.get(get_variant_batch_row_test_order_id(row) or row.id, [])
+                if (related_control.get("label_status") or "current") != "current"
+            ),
         )
         if control:
             serialized["label_status"] = control.label_status
         serialized_rows.append(serialized)
     return serialized_rows
+
+
+@app.get(
+    "/api/variant-products/batches/{order_id}/related-label-controls",
+    response_model=VariantProductBatchRelatedLabelControlsResponse,
+)
+def get_variant_product_batch_related_label_controls(
+    order_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _ = current_user
+    ensure_variant_product_finished_product_control_links(db)
+
+    row = db.query(VariantProductBatchTestOrder).filter(VariantProductBatchTestOrder.id == order_id).first()
+    if not row:
+        archived_row = (
+            db.query(VariantProductBatchTestOrderArchive)
+            .filter(
+                or_(
+                    VariantProductBatchTestOrderArchive.id == order_id,
+                    VariantProductBatchTestOrderArchive.ordered_test_id == order_id,
+                )
+            )
+            .order_by(VariantProductBatchTestOrderArchive.id.desc())
+            .first()
+        )
+        row = archived_row
+
+    if not row:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Variant product batch test order not found",
+        )
+
+    related_controls_map = get_related_label_controls_for_batch_rows(db, [row])
+    row_key = get_variant_batch_row_test_order_id(row) or row.id
+    return {
+        "order_id": row_key,
+        "related_label_controls": related_controls_map.get(row_key, []),
+    }
 
 
 @app.post("/api/variant-products/batches/ordered-tests", response_model=VariantProductBatchTestOrderResponse, status_code=status.HTTP_201_CREATED)
@@ -2295,6 +2648,7 @@ def create_variant_product_batch_test_orders_bulk(
                 expiry_date=expiry_date or None,
                 laboratory_name=laboratory_name or None,
                 asana_task_number=asana_task_number or None,
+                ordered_test_id=order.id,
             )
         )
 
@@ -2327,12 +2681,19 @@ def update_variant_product_batch_test_order(
 
     if payload.workflow_status is not None:
         workflow_status = payload.workflow_status.strip()
-        allowed_statuses = {"ordered_tests", "to_clarify"}
+        allowed_statuses = {"ordered_tests", "to_clarify", "released"}
         if workflow_status not in allowed_statuses:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Invalid workflow_status",
             )
+        if workflow_status == "released":
+            related_controls = get_related_label_control_entities_for_batch_row(db, order)
+            if any((control.label_status or "current") == "current" for control in related_controls):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Nie można zwolnić produtu z etykietą o statusie Bieżące",
+                )
         order.workflow_status = workflow_status
 
     if payload.clarification_note is not None:
@@ -2574,6 +2935,12 @@ def archive_variant_product_batch_test_orders(
         )
 
     for row in rows:
+        related_controls = get_related_label_control_entities_for_batch_row(db, row)
+        if any((control.label_status or "current") == "current" for control in related_controls):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Nie można zwolnić produtu z etykietą o statusie Bieżące",
+            )
         db.add(
             VariantProductBatchTestOrderArchive(
                 ordered_test_id=row.id,
@@ -2784,7 +3151,59 @@ def get_variant_product_finished_product_controls(
         .order_by(VariantProductFinishedProductControl.created_at.desc(), VariantProductFinishedProductControl.id.desc())
         .all()
     )
-    return [serialize_variant_finished_product_control_row(row) for row in rows]
+    ordered_test_ids = sorted({row.ordered_test_id for row in rows if row.ordered_test_id is not None})
+    order_map: dict[int, VariantProductBatchTestOrder] = {}
+    if ordered_test_ids:
+        orders = (
+            db.query(VariantProductBatchTestOrder)
+            .filter(VariantProductBatchTestOrder.id.in_(ordered_test_ids))
+            .all()
+        )
+        order_map = {order.id: order for order in orders}
+
+    original_order_ids = sorted({
+        order.original_test_order_id
+        for order in order_map.values()
+        if order.original_test_order_id is not None
+    })
+    original_label_control_map: dict[int, int] = {}
+    if original_order_ids:
+        original_controls = (
+            db.query(VariantProductFinishedProductControl)
+            .filter(VariantProductFinishedProductControl.ordered_test_id.in_(original_order_ids))
+            .order_by(
+                VariantProductFinishedProductControl.ordered_test_id.asc(),
+                VariantProductFinishedProductControl.id.asc(),
+            )
+            .all()
+        )
+        for control in original_controls:
+            if control.ordered_test_id is not None and control.ordered_test_id not in original_label_control_map:
+                original_label_control_map[control.ordered_test_id] = control.id
+
+    return [
+        serialize_variant_finished_product_control_row(
+            row,
+            original_test_order_id=(
+                order_map[row.ordered_test_id].original_test_order_id
+                if row.ordered_test_id is not None and row.ordered_test_id in order_map
+                else None
+            ),
+            original_label_control_id=(
+                original_label_control_map.get(order_map[row.ordered_test_id].original_test_order_id)
+                if row.ordered_test_id is not None
+                and row.ordered_test_id in order_map
+                and order_map[row.ordered_test_id].original_test_order_id is not None
+                else None
+            ),
+            po_number=(
+                order_map[row.ordered_test_id].po_number
+                if row.ordered_test_id is not None and row.ordered_test_id in order_map
+                else None
+            ),
+        )
+        for row in rows
+    ]
 
 
 @app.post(
@@ -2800,7 +3219,7 @@ def create_variant_product_finished_product_control(
     _ = current_user
 
     label_status = payload.label_status.strip()
-    if label_status not in {"incorrect", "correct"}:
+    if label_status not in {"incorrect", "correct", "archived"}:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid label_status",
@@ -3027,6 +3446,101 @@ def update_variant_product_finished_product_controls_status(
 
     db.commit()
     return {"updated": len(controls), "label_status": label_status}
+
+
+@app.post("/api/variant-products/finished-product-controls/relabel")
+def relabel_variant_product_finished_product_controls(
+    payload: VariantProductFinishedProductControlBulkIds,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _ = current_user
+
+    ids = sorted(set(payload.ids))
+    if not ids:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="ids are required",
+        )
+
+    controls = (
+        db.query(VariantProductFinishedProductControl)
+        .filter(VariantProductFinishedProductControl.id.in_(ids))
+        .order_by(VariantProductFinishedProductControl.id.asc())
+        .all()
+    )
+    if not controls:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No finished product controls found",
+        )
+
+    touched_order_ids: set[int] = set()
+    for control in controls:
+        clone = VariantProductFinishedProductControl(
+            ordered_test_id=control.ordered_test_id,
+            sku=control.sku,
+            name=control.name,
+            ean=control.ean,
+            laboratory_name=control.laboratory_name,
+            asana_task_number=control.asana_task_number,
+            label_status="current",
+            printed_material_type=control.printed_material_type,
+            product_name=control.product_name,
+            product_project_number=control.product_project_number,
+            product_ean_number=control.product_ean_number,
+            product_batch_number=control.product_batch_number,
+            product_expiry_date=control.product_expiry_date,
+            control_date=control.control_date,
+            market_label_version=control.market_label_version,
+            active_substances_match_pds=control.active_substances_match_pds,
+            active_substances_match_pds_note=control.active_substances_match_pds_note,
+            label_version_matches_used_version=control.label_version_matches_used_version,
+            label_version_matches_used_version_note=control.label_version_matches_used_version_note,
+            has_printing_errors=control.has_printing_errors,
+            has_printing_errors_note=control.has_printing_errors_note,
+            has_graphic_design_errors=control.has_graphic_design_errors,
+            has_graphic_design_errors_note=control.has_graphic_design_errors_note,
+            print_correctness=control.print_correctness,
+            print_correctness_note=control.print_correctness_note,
+            has_labeling_errors=control.has_labeling_errors,
+            has_labeling_errors_note=control.has_labeling_errors_note,
+            cap_is_correct=control.cap_is_correct,
+            cap_is_correct_note=control.cap_is_correct_note,
+            induction_seal_weld_correct=control.induction_seal_weld_correct,
+            induction_seal_weld_correct_note=control.induction_seal_weld_correct_note,
+            induction_seal_opening_correct=control.induction_seal_opening_correct,
+            induction_seal_opening_correct_note=control.induction_seal_opening_correct_note,
+            package_is_dirty=control.package_is_dirty,
+            package_is_dirty_note=control.package_is_dirty_note,
+            package_is_damaged=control.package_is_damaged,
+            package_is_damaged_note=control.package_is_damaged_note,
+            qr_code_is_active=control.qr_code_is_active,
+            qr_code_is_active_note=control.qr_code_is_active_note,
+            package_contents_match_card=control.package_contents_match_card,
+            package_contents_match_card_note=control.package_contents_match_card_note,
+            product_verified=control.product_verified,
+            product_verified_note=control.product_verified_note,
+            comment=control.comment,
+        )
+        control.label_status = "archived"
+        db.add(control)
+        db.add(clone)
+        if control.ordered_test_id is not None:
+            touched_order_ids.add(control.ordered_test_id)
+
+    if touched_order_ids:
+        orders = (
+            db.query(VariantProductBatchTestOrder)
+            .filter(VariantProductBatchTestOrder.id.in_(sorted(touched_order_ids)))
+            .all()
+        )
+        for order in orders:
+            order.label_status = "current"
+            db.add(order)
+
+    db.commit()
+    return {"relabeled": len(controls)}
 
 
 @app.get("/api/integrations/settings", response_model=IntegrationSettingsResponseDTO)

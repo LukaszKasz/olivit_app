@@ -54,12 +54,19 @@ class VariantProductFinishedProductControlBulkStatusUpdate(BaseModel):
     label_status: str
 
 
+class VariantProductFinishedProductControlBulkIds(BaseModel):
+    ids: list[int]
+
+
 class VariantProductFinishedProductControlResponse(BaseModel):
     id: int
     ordered_test_id: Optional[int] = None
     test_order_id: Optional[int] = None
+    original_test_order_id: Optional[int] = None
     label_control_id: Optional[int] = None
+    original_label_control_id: Optional[int] = None
     project_number: Optional[str] = None
+    po_number: Optional[str] = None
     sku: str
     name: str
     ean: str
