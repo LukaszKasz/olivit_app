@@ -37,6 +37,11 @@ function LoginForm() {
                 return;
             }
 
+            if (err.response.status >= 500) {
+                setError(t('login.errorServer'));
+                return;
+            }
+
             setError(err.response.data?.detail || t('login.errorInvalid'));
         } finally {
             setLoading(false);
