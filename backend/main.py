@@ -1520,8 +1520,6 @@ def ensure_main_product_test_orders_schema() -> None:
         statements.append("ALTER TABLE main_product_test_orders ADD COLUMN expiry_date VARCHAR(50)")
     if "planned_test_date" not in columns:
         statements.append("ALTER TABLE main_product_test_orders ADD COLUMN planned_test_date VARCHAR(50)")
-    if "test_cost" not in columns:
-        statements.append("ALTER TABLE main_product_test_orders ADD COLUMN test_cost VARCHAR(255)")
     if "po_number" not in columns:
         statements.append("ALTER TABLE main_product_test_orders ADD COLUMN po_number VARCHAR(255)")
     if "workflow_status" not in columns:
