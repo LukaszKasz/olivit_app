@@ -11,6 +11,8 @@ class VariantProductBatchTestOrderCreate(BaseModel):
     laboratory_name: Optional[str] = None
     batch_number: str
     asana_task_number: Optional[str] = None
+    purchase_order_number: Optional[str] = None
+    test_cost: Optional[str] = None
     production_date: Optional[str] = None
     expiry_date: Optional[str] = None
     planned_test_date: Optional[str] = None
@@ -91,6 +93,8 @@ class VariantProductBatchTestOrderResponse(BaseModel):
     laboratory_name: Optional[str] = None
     batch_number: str
     asana_task_number: Optional[str] = None
+    purchase_order_number: Optional[str] = None
+    test_cost: Optional[str] = None
     batch_added_at: datetime
     ordered_at: Optional[datetime] = None
     production_date: Optional[str] = None

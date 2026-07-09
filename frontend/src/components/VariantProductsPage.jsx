@@ -36,10 +36,10 @@ function VariantProductsPage() {
         saving: false,
         laboratory: '',
         asanaTaskNumber: '',
+        testCost: '',
         productionDate: '',
         expiryDate: '',
         plannedTestDate: '',
-        testCost: '',
         poNumber: '',
         targetRow: null,
         relatedRows: [],
@@ -242,10 +242,10 @@ function VariantProductsPage() {
                 saving: false,
                 laboratory: '',
                 asanaTaskNumber: '',
+                testCost: '',
                 productionDate: '',
                 expiryDate: '',
                 plannedTestDate: '',
-                testCost: '',
                 poNumber: '',
                 targetRow: {
                     id: selectedProduct.id,
@@ -282,10 +282,10 @@ function VariantProductsPage() {
             saving: false,
             laboratory: '',
             asanaTaskNumber: '',
+            testCost: '',
             productionDate: '',
             expiryDate: '',
             plannedTestDate: '',
-            testCost: '',
             poNumber: '',
             targetRow: null,
             relatedRows: [],
@@ -325,10 +325,10 @@ function VariantProductsPage() {
             await variantProductsAPI.orderBatchTestsBulk({
                 laboratory_name: bulkBatchDialog.laboratory,
                 asana_task_number: bulkBatchDialog.asanaTaskNumber,
+                test_cost: bulkBatchDialog.testCost,
                 production_date: bulkBatchDialog.productionDate,
                 expiry_date: bulkBatchDialog.expiryDate,
                 planned_test_date: bulkBatchDialog.plannedTestDate,
-                test_cost: bulkBatchDialog.testCost,
                 po_number: bulkBatchDialog.poNumber,
                 items: rowsToSave.map((row) => ({
                     sku: row.sku,
@@ -338,7 +338,7 @@ function VariantProductsPage() {
                 })),
             });
 
-            setSuccess(`Zlecono badania dla ${bulkBatchDialog.targetRow.sku} i zapisano ${rowsToSave.length} produktów do kontroli produktu gotowego.`);
+            setSuccess(`Zapisano produkt do badań oraz produkty do kontroli produktu gotowego dla projektu ${bulkBatchDialog.targetRow.projectNumber || bulkBatchDialog.targetRow.sku}.`);
             setError('');
             setSelectedProductIds([]);
             setBulkBatchDialog({
@@ -346,10 +346,10 @@ function VariantProductsPage() {
                 saving: false,
                 laboratory: '',
                 asanaTaskNumber: '',
+                testCost: '',
                 productionDate: '',
                 expiryDate: '',
                 plannedTestDate: '',
-                testCost: '',
                 poNumber: '',
                 targetRow: null,
                 relatedRows: [],
@@ -366,6 +366,7 @@ function VariantProductsPage() {
         || !bulkBatchDialog.expiryDate.trim()
         || !bulkBatchDialog.plannedTestDate.trim()
         || !bulkBatchDialog.targetRow.batchNumber.trim()
+        || bulkBatchDialog.relatedRows.some((row) => row.selected && !row.batchNumber.trim())
         || bulkBatchDialog.relatedRows.some((row) => row.selected && !row.batchNumber.trim())
         || bulkBatchDialog.saving;
 
@@ -675,7 +676,7 @@ function VariantProductsPage() {
                                             </option>
                                         ))}
                                     </select>
-                                    <div className="mt-4 grid gap-4 md:grid-cols-2">
+                                    <div className="mt-4 grid gap-4 md:grid-cols-4">
                                         <div>
                                             <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
                                                 Numer projektu
@@ -699,14 +700,14 @@ function VariantProductsPage() {
                                         </div>
                                         <div>
                                             <label className="block text-xs font-semibold uppercase tracking-[0.18em] text-slate-500" htmlFor="bulk-variant-test-cost">
-                                                Koszt badania
+                                                Koszt badań
                                             </label>
                                             <input
                                                 id="bulk-variant-test-cost"
                                                 type="text"
                                                 value={bulkBatchDialog.testCost}
                                                 onChange={(event) => setBulkBatchDialog((current) => ({ ...current, testCost: event.target.value }))}
-                                                placeholder="Np. 350 PLN"
+                                                placeholder="Np. 250 PLN"
                                                 className="mt-3 w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-500"
                                             />
                                         </div>

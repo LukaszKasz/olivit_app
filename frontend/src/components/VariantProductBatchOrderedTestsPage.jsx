@@ -18,6 +18,7 @@ const LABEL_STATUS_META = {
     in_progress: { label: 'W trakcie', className: 'bg-amber-100 text-amber-800' },
     incorrect: { label: 'Do wyjaśnienia', className: 'bg-rose-100 text-rose-800' },
     archived: { label: 'Archiwum', className: 'bg-slate-200 text-slate-800' },
+    relabel_requested: { label: 'Zlecono przetykietowanie', className: 'bg-fuchsia-100 text-fuchsia-800' },
     correct: { label: 'Poprawne', className: 'bg-emerald-100 text-emerald-800' },
 };
 
@@ -638,7 +639,7 @@ function VariantProductBatchOrderedTestsPage({
                 return false;
             }
 
-            if (finishedProductControlFilter === 'archived' && labelStatus !== 'archived') {
+            if (finishedProductControlFilter === 'archived' && !['archived', 'relabel_requested'].includes(labelStatus)) {
                 return false;
             }
         }
@@ -979,10 +980,10 @@ function VariantProductBatchOrderedTestsPage({
             setSelectedRowIds([]);
             setSuccess(
                 moveDialog.targetStatus === 'to_clarify'
-                        ? `Przeniesiono ${selectedRowIds.length} pozycji do zakładki Do wyjaśnienia.`
-                        : moveDialog.targetStatus === 'ordered_tests'
-                            ? `Przeniesiono ${selectedRowIds.length} pozycji do zakładki Badania zlecone.`
-                            : `Przeniesiono ${selectedRowIds.length} pozycji do zakładki Do zwolnienia warunkowe.`
+                    ? `Przeniesiono ${selectedRowIds.length} pozycji do zakładki Do wyjaśnienia.`
+                    : moveDialog.targetStatus === 'ordered_tests'
+                        ? `Przeniesiono ${selectedRowIds.length} pozycji do zakładki Badania zlecone.`
+                        : `Przeniesiono ${selectedRowIds.length} pozycji do zakładki Do zwolnienia warunkowe.`
             );
             setError('');
             closeMoveDialog();
@@ -1199,6 +1200,7 @@ function VariantProductBatchOrderedTestsPage({
     const relatedProductsResolvedCount = relatedProductsDialog.controls.filter(
         (control) => (control.label_status || 'current') !== 'current'
     ).length;
+    const canBatchManage = !enableFinishedProductControl && !archiveMode && !isAllView && !isReleasedView;
     const showClarificationColumn = !enableFinishedProductControl && (viewMode === 'to_clarify' || viewMode === 'all');
     const moveOptions = viewMode === 'to_clarify'
         ? [
@@ -1255,7 +1257,7 @@ function VariantProductBatchOrderedTestsPage({
                             Zaleć ponowne badania
                         </button>
                     )}
-                    {!enableFinishedProductControl && !archiveMode && !isAllView && !isReleasedView && (
+                    {!enableFinishedProductControl && canBatchManage && (
                         <button
                             type="button"
                             onClick={handleGenerateCoA}
@@ -1265,7 +1267,7 @@ function VariantProductBatchOrderedTestsPage({
                             Generuj CoA
                         </button>
                     )}
-                    {!enableFinishedProductControl && !archiveMode && !isAllView && !isReleasedView && (
+                    {!enableFinishedProductControl && canBatchManage && (
                         <button
                             type="button"
                             onClick={openDocumentsDialog}
@@ -1275,7 +1277,7 @@ function VariantProductBatchOrderedTestsPage({
                             Dodaj dokumenty
                         </button>
                     )}
-                    {!enableFinishedProductControl && !archiveMode && !isAllView && !isReleasedView && (
+                    {!enableFinishedProductControl && canBatchManage && (
                         <button
                             type="button"
                             onClick={() => openRelatedProductsDialog(selectedRowIds.length === 1 ? rows.find((row) => row.id === selectedRowIds[0]) : null)}
@@ -1285,7 +1287,7 @@ function VariantProductBatchOrderedTestsPage({
                             Zwolnienie
                         </button>
                     )}
-                    {!enableFinishedProductControl && !archiveMode && !isAllView && !isReleasedView && (
+                    {!enableFinishedProductControl && canBatchManage && (
                         <button
                             type="button"
                             onClick={openMoveDialog}
@@ -1303,6 +1305,20 @@ function VariantProductBatchOrderedTestsPage({
                             disabled={selectedRowIds.length === 0}
                         >
                             Przetykietowanie
+                        </button>
+                    )}
+                    {enableFinishedProductControl && finishedProductControlFilter === 'incorrect' && (
+                        <button
+                            type="button"
+                            onClick={() => setFinishedControlMoveDialog({
+                                open: true,
+                                saving: false,
+                                labelStatus: 'correct',
+                            })}
+                            className="rounded-2xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                            disabled={selectedRowIds.length === 0}
+                        >
+                            Przenieś do Poprawne
                         </button>
                     )}
                     {enableFinishedProductControl && finishedProductControlFilter === 'incorrect' && (
@@ -1380,6 +1396,7 @@ function VariantProductBatchOrderedTestsPage({
                                             aria-label="Zaznacz wszystkie widoczne wiersze"
                                         />
                                     </th>
+                                    <th className="px-6 py-4">Status etykiety</th>
                                     <th className="px-6 py-4">ID badania</th>
                                     <th className="px-6 py-4">ID badania pierwotnego</th>
                                     <th className="px-6 py-4">ID kontroli etykiet</th>
@@ -1395,6 +1412,7 @@ function VariantProductBatchOrderedTestsPage({
                                             <th className="px-6 py-4">Seria produktu</th>
                                             <th className="px-6 py-4">Data ważności produktu</th>
                                             <th className="px-6 py-4">Numer PO</th>
+                                            <th className="px-6 py-4">Status etykiety</th>
                                         </>
                                     ) : (
                                         <>
@@ -1419,7 +1437,6 @@ function VariantProductBatchOrderedTestsPage({
                                             <th className="px-6 py-4">Uszkodzenie</th>
                                             <th className="px-6 py-4">Kod QR</th>
                                             <th className="px-6 py-4">Zawartość zgodna</th>
-                                            <th className="px-6 py-4">Status etykiety</th>
                                             <th className="px-6 py-4">Zweryfikowano</th>
                                             <th className="px-6 py-4">Komentarz</th>
                                             <th className="px-6 py-4">Data utworzenia</th>
@@ -1486,13 +1503,13 @@ function VariantProductBatchOrderedTestsPage({
                         <tbody>
                             {loading ? (
                                 <tr className="border-t border-slate-100">
-                                    <td colSpan={enableFinishedProductControl ? (isCurrentFinishedProductControlView ? 14 : 35) : showClarificationColumn ? 46 : 45} className="px-6 py-10 text-center text-slate-500">
+                                    <td colSpan={enableFinishedProductControl ? (isCurrentFinishedProductControlView ? 15 : 35) : showClarificationColumn ? 46 : 45} className="px-6 py-10 text-center text-slate-500">
                                         {enableFinishedProductControl ? 'Ładowanie kontroli produktu gotowego...' : 'Ładowanie zleconych badań partii...'}
                                     </td>
                                 </tr>
                             ) : filteredRows.length === 0 ? (
                                 <tr className="border-t border-slate-100">
-                                    <td colSpan={enableFinishedProductControl ? (isCurrentFinishedProductControlView ? 14 : 35) : showClarificationColumn ? 46 : 45} className="px-6 py-10 text-center text-slate-500">
+                                    <td colSpan={enableFinishedProductControl ? (isCurrentFinishedProductControlView ? 15 : 35) : showClarificationColumn ? 46 : 45} className="px-6 py-10 text-center text-slate-500">
                                         Brak wyników dla podanego wyszukiwania.
                                     </td>
                                 </tr>
@@ -1512,6 +1529,13 @@ function VariantProductBatchOrderedTestsPage({
                                                 aria-label={`Zaznacz wiersz ${row.sku}`}
                                             />
                                         </td>
+                                        {enableFinishedProductControl && (
+                                            <td className="px-6 py-4 text-slate-700">
+                                                <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${(LABEL_STATUS_META[row.label_status || 'current'] || LABEL_STATUS_META.current).className}`}>
+                                                    {(LABEL_STATUS_META[row.label_status || 'current'] || LABEL_STATUS_META.current).label}
+                                                </span>
+                                            </td>
+                                        )}
                                         <td className="whitespace-nowrap px-6 py-4 text-slate-700">
                                             {row.test_order_id ?? '—'}
                                         </td>
@@ -1576,7 +1600,6 @@ function VariantProductBatchOrderedTestsPage({
                                                         <td className="whitespace-nowrap px-6 py-4 text-slate-700">{renderFinishedControlValue(row.package_is_damaged, highlightNegativeFinishedControlValues)}</td>
                                                         <td className="whitespace-nowrap px-6 py-4 text-slate-700">{renderFinishedControlValue(row.qr_code_is_active, highlightNegativeFinishedControlValues)}</td>
                                                         <td className="whitespace-nowrap px-6 py-4 text-slate-700">{renderFinishedControlValue(row.package_contents_match_card, highlightNegativeFinishedControlValues)}</td>
-                                                        <td className="whitespace-nowrap px-6 py-4 text-slate-700">{LABEL_STATUS_META[row.label_status || 'current']?.label || '—'}</td>
                                                         <td className="whitespace-nowrap px-6 py-4 text-slate-700">{renderFinishedControlValue(row.product_verified, highlightNegativeFinishedControlValues)}</td>
                                                         <td className="px-6 py-4 text-slate-700">{row.comment || '—'}</td>
                                                         <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.created_at ? new Date(row.created_at).toLocaleString('pl-PL') : '—'}</td>
@@ -2004,9 +2027,13 @@ function VariantProductBatchOrderedTestsPage({
                                                 <div>Status etykiety</div>
                                                 <div>Typ</div>
                                             </div>
-                                            <div className="divide-y divide-slate-200">
+                                                <div className="divide-y divide-slate-200">
                                                 {relatedProductsDialog.controls.map((control) => {
-                                                    const isPrimaryProduct = control.ordered_test_id === (relatedProductsDialog.row?.test_order_id ?? relatedProductsDialog.row?.id);
+                                                    const isRelabelRequested = (control.label_status || 'current') === 'relabel_requested';
+                                                    const isPrimaryProduct = relatedProductsDialog.row?.label_control_id
+                                                        ? control.id === relatedProductsDialog.row.label_control_id
+                                                        : control.sku === relatedProductsDialog.row?.sku
+                                                            && control.ean === relatedProductsDialog.row?.ean;
                                                     return (
                                                         <div
                                                             key={control.id}
@@ -2030,7 +2057,11 @@ function VariantProductBatchOrderedTestsPage({
                                                                 </span>
                                                             </div>
                                                             <div>
-                                                                {isPrimaryProduct ? (
+                                                                {isRelabelRequested ? (
+                                                                    <span className="inline-flex rounded-full bg-fuchsia-100 px-3 py-1 text-xs font-semibold text-fuchsia-800">
+                                                                        Przetykietowanie
+                                                                    </span>
+                                                                ) : isPrimaryProduct ? (
                                                                     <span className="inline-flex rounded-full bg-slate-900 px-3 py-1 text-xs font-semibold text-white">
                                                                         Produkt badany
                                                                     </span>

@@ -43,7 +43,7 @@ function App() {
                         path="/main-products/all"
                         element={
                             <MainProductOrderedTestsPage
-                                title="Bull - baza produktów - Wszystkie"
+                                title="Bulk / Baza produktów - Wszystkie"
                                 description="Widok prezentuje wszystkie pozycje produktów głównych wraz z ich aktualnym statusem."
                                 viewMode="all"
                             />
@@ -84,24 +84,24 @@ function App() {
                         path="/main-products/archive"
                         element={
                             <MainProductOrderedTestsPage
-                                title="Bulk / Baza produktów - Archiwum"
-                                description="Widok prezentuje zarchiwizowane produkty główne."
+                                title="Bulk / Baza produktów - Zwolnione"
+                                description="Widok prezentuje zwolnione produkty główne."
                                 viewMode="archive"
                             />
                         }
                     />
                     <Route path="/product-variants" element={<VariantProductsPage />} />
-                    <Route path="/product-variants/batches/ordered-tests" element={<VariantProductBatchOrderedTestsPage />} />
                     <Route
                         path="/product-variants/batches/all"
                         element={
                             <VariantProductBatchOrderedTestsPage
                                 title="Produkty spakowane / Warianty - Wszystkie"
-                                description="Widok prezentuje wszystkie pozycje wariantów wraz z ich aktualnym statusem."
+                                description="Widok prezentuje wszystkie partie wariantów ze wszystkich statusów badań."
                                 viewMode="all"
                             />
                         }
                     />
+                    <Route path="/product-variants/batches/ordered-tests" element={<VariantProductBatchOrderedTestsPage />} />
                     <Route
                         path="/product-variants/batches/to-clarify"
                         element={
@@ -116,9 +116,21 @@ function App() {
                         path="/product-variants/batches/released"
                         element={
                             <VariantProductBatchOrderedTestsPage
-                                title="Produkty spakowane / Warianty - Do zwolnienia"
-                                description="Widok prezentuje partie wariantów oczekujące na zwolnienie."
+                                title="Produkty spakowane / Warianty - Zwolniono"
+                                description="Widok prezentuje partie wariantów, które zostały zwolnione."
                                 viewMode="released"
+                            />
+                        }
+                    />
+                    <Route
+                        path="/product-variants/finished-product-control/all"
+                        element={
+                            <VariantProductBatchOrderedTestsPage
+                                title="Produkty spakowane / Warianty - Kontrola produktu gotowego - Wszystkie"
+                                description="Widok prezentuje wszystkie wpisy kontroli produktu gotowego ze wszystkich statusów."
+                                enableFinishedProductControl
+                                finishedProductControlFilter="all"
+                                allowCreateFinishedProductControl={false}
                             />
                         }
                     />
@@ -173,8 +185,8 @@ function App() {
                         path="/product-variants/batches/archive"
                         element={
                             <VariantProductBatchOrderedTestsPage
-                                title="Produkty spakowane / Warianty - Do zwolnienia warunkowe"
-                                description="Widok prezentuje partie wariantów oczekujące na zwolnienie warunkowe."
+                                title="Produkty spakowane / Warianty - Zwolnione warunkowo"
+                                description="Widok prezentuje partie wariantów zwolnione warunkowo."
                                 archiveMode
                                 archiveFilter="conditional_release"
                             />
@@ -190,6 +202,14 @@ function App() {
                                 archiveFilter="history"
                             />
                         }
+                    />
+                    <Route
+                        path="/product-variants/batches/conditional-release"
+                        element={<MenuPlaceholderPage title="Produkty spakowane / Warianty - Zwolnione warunkowo" />}
+                    />
+                    <Route
+                        path="/product-variants/batches/release"
+                        element={<MenuPlaceholderPage title="Produkty spakowane / Warianty - Do zwolnienia" />}
                     />
                     <Route path="/settings" element={<SettingsPage />} />
                     <Route path="/table-cleanup" element={<TableCleanupPage />} />

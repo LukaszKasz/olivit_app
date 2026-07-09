@@ -10,6 +10,7 @@ class MainProductTestOrderCreate(BaseModel):
     laboratory_name: Optional[str] = None
     batch_number: str
     asana_task_number: Optional[str] = None
+    test_cost: Optional[str] = None
     production_date: Optional[str] = None
     expiry_date: Optional[str] = None
     planned_test_date: Optional[str] = None
@@ -29,6 +30,7 @@ class MainProductTestOrderResponse(BaseModel):
     laboratory_name: Optional[str] = None
     batch_number: Optional[str] = None
     asana_task_number: Optional[str] = None
+    test_cost: Optional[str] = None
     production_date: Optional[str] = None
     expiry_date: Optional[str] = None
     planned_test_date: Optional[str] = None

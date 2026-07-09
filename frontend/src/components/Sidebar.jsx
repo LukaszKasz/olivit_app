@@ -44,13 +44,15 @@ function Sidebar({ collapsed, onToggle }) {
                         { to: '/product-variants/batches/ordered-tests', label: 'Badania zlecone' },
                         { to: '/product-variants/batches/to-clarify', label: 'Do wyjaśnienia' },
                         { to: '/product-variants/batches/archive-history', label: 'Archiwum', indent: true },
-                        { to: '/product-variants/batches/archive', label: 'Do zwolnienia warunkowe' },
-                        { to: '/product-variants/batches/released', label: 'Do zwolnienia' },
+                        { to: '/product-variants/batches/archive', label: 'Zwolnione warunkowo' },
+                        { to: '/product-variants/batches/release', label: 'Do zwolnienia' },
+                        { to: '/product-variants/batches/released', label: 'Zwolniono', indent: true },
                     ],
                 },
                 {
                     title: 'Kontrola produktu gotowego',
                     items: [
+                        { to: '/product-variants/finished-product-control/all', label: 'Wszystkie' },
                         { to: '/product-variants/finished-product-control', label: 'Bieżące' },
                         { to: '/product-variants/finished-product-control/incorrect', label: 'Do wyjaśnienia' },
                         { to: '/product-variants/finished-product-control/archive', label: 'Archiwum', indent: true },
@@ -94,14 +96,7 @@ function Sidebar({ collapsed, onToggle }) {
                             </p>
                         ) : null}
                         {section.groups.map((group) => (
-                            <div
-                                key={group.title || group.items[0].to}
-                                className={
-                                    !collapsed && group.title
-                                        ? `mt-2 ${group.title.includes('Kontrola produktu gotowego') ? 'border-t border-slate-700/50 pt-3' : ''}`
-                                        : ''
-                                }
-                            >
+                            <div key={group.title || group.items[0].to} className={!collapsed && group.title ? 'mt-3 border-t border-slate-700/50 pt-3' : ''}>
                                 {!collapsed && group.title ? (
                                     <p
                                         className={`px-4 pb-2 pt-1 text-xs font-medium uppercase tracking-[0.14em] ${

@@ -35,6 +35,7 @@ function MainProductsPage({
     });
     const [success, setSuccess] = useState('');
     const [orderDialog, setOrderDialog] = useState(getInitialOrderDialog);
+    const [selectedProductIds, setSelectedProductIds] = useState([]);
     const [detailsDialog, setDetailsDialog] = useState({
         open: false,
         loading: false,
@@ -229,6 +230,28 @@ function MainProductsPage({
         handleBatchOnlyAction(product);
     };
 
+    const visibleProductIds = products.map((product) => product.id);
+    const allVisibleSelected = visibleProductIds.length > 0 && visibleProductIds.every((id) => selectedProductIds.includes(id));
+    const selectedProduct = selectedProductIds.length === 1
+        ? products.find((product) => product.id === selectedProductIds[0]) || null
+        : null;
+
+    const toggleProductSelection = (productId) => {
+        setSelectedProductIds((current) =>
+            current.includes(productId)
+                ? current.filter((id) => id !== productId)
+                : [...current, productId]
+        );
+    };
+
+    const toggleAllVisibleProducts = () => {
+        setSelectedProductIds((current) =>
+            allVisibleSelected
+                ? current.filter((id) => !visibleProductIds.includes(id))
+                : Array.from(new Set([...current, ...visibleProductIds]))
+        );
+    };
+
     const groupedDetails = detailsDialog.items.reduce((groups, item) => {
         const key = `${item.parameter_type_pl}|||${item.parameter_type_en}`;
         const existingGroup = groups.find((group) => group.key === key);
@@ -275,6 +298,44 @@ function MainProductsPage({
                 />
             </div>
 
+            <div className="mb-4 flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600 shadow-sm">
+                <span>Zaznaczone: <span className="font-semibold text-slate-900">{selectedProductIds.length}</span></span>
+                <div className="flex items-center gap-2">
+                    <button
+                        type="button"
+                        onClick={() => selectedProduct && handleDetailsButtonClick(selectedProduct)}
+                        className="rounded-2xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                        disabled={!selectedProduct}
+                    >
+                        Szczegóły
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => selectedProduct && handleLaboratoryAction('', selectedProduct)}
+                        className="rounded-2xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                        disabled={!selectedProduct}
+                    >
+                        Zleć badania
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => selectedProduct && handleAddBatchButtonClick(selectedProduct)}
+                        className="rounded-2xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                        disabled={!selectedProduct}
+                    >
+                        Dodaj serię
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setSelectedProductIds([])}
+                        className="rounded-2xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                        disabled={selectedProductIds.length === 0}
+                    >
+                        Wyczyść zaznaczenie
+                    </button>
+                </div>
+            </div>
+
             {error && (
                 <div className="mb-6 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
                     {error}
@@ -292,9 +353,16 @@ function MainProductsPage({
                     <table className="w-full text-left text-sm">
                         <thead className="bg-slate-50 text-xs uppercase tracking-[0.18em] text-slate-500">
                             <tr>
+                                <th className="px-6 py-4">
+                                    <input
+                                        type="checkbox"
+                                        checked={allVisibleSelected}
+                                        onChange={toggleAllVisibleProducts}
+                                        aria-label="Zaznacz wszystkie widoczne produkty główne"
+                                    />
+                                </th>
                                 <th className="px-6 py-4">Numer projektu</th>
                                 <th className="px-6 py-4">Nazwa</th>
-                                <th className="px-6 py-4 text-right">Akcje</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -317,36 +385,20 @@ function MainProductsPage({
                                         className="border-t border-slate-100 hover:bg-slate-50/80"
                                         onContextMenu={(event) => handleContextMenu(event, product)}
                                     >
+                                        <td className="px-6 py-4">
+                                            <input
+                                                type="checkbox"
+                                                checked={selectedProductIds.includes(product.id)}
+                                                onChange={() => toggleProductSelection(product.id)}
+                                                onClick={(event) => event.stopPropagation()}
+                                                aria-label={`Zaznacz produkt ${product.project_number}`}
+                                            />
+                                        </td>
                                         <td className="whitespace-nowrap px-6 py-4 font-semibold text-slate-900">
                                             {product.project_number}
                                         </td>
                                         <td className="px-6 py-4 text-slate-700">
                                             {product.name}
-                                        </td>
-                                        <td className="px-6 py-4 text-right">
-                                            <div className="flex justify-end gap-2">
-                                                <button
-                                                    type="button"
-                                                    onClick={() => handleDetailsButtonClick(product)}
-                                                    className="rounded-2xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
-                                                >
-                                                    Szczegóły
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => handleLaboratoryAction('', product)}
-                                                    className="rounded-2xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
-                                                >
-                                                    Zleć badania
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => handleAddBatchButtonClick(product)}
-                                                    className="rounded-2xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
-                                                >
-                                                    Dodaj serię
-                                                </button>
-                                            </div>
                                         </td>
                                     </tr>
                                 ))
@@ -402,7 +454,7 @@ function MainProductsPage({
 
             {orderDialog.open && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/35 p-4">
-                    <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl">
+                    <div className="max-h-[90vh] w-full max-w-5xl overflow-y-auto rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl">
                         <div className="mb-6">
                             <h2 className="text-2xl font-semibold text-slate-900">
                                 {orderDialog.mode === 'test-order' ? 'Zleć badania' : 'Dodaj serię'}
@@ -414,27 +466,37 @@ function MainProductsPage({
                         </div>
 
                         {orderDialog.mode === 'test-order' && (
-                            <div className="mb-6">
-                                <label className="block text-xs font-semibold uppercase tracking-[0.18em] text-slate-500" htmlFor="laboratory">
-                                    Laboratorium
-                                </label>
-                                <select
-                                    id="laboratory"
-                                    value={orderDialog.laboratory}
-                                    onChange={(event) => setOrderDialog((prev) => ({ ...prev, laboratory: event.target.value }))}
-                                    className="mt-3 w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-500 focus:bg-white"
-                                >
-                                    <option value="">Wybierz laboratorium</option>
-                                    {LABORATORIES.map((laboratory) => (
-                                        <option key={laboratory} value={laboratory}>
-                                            {laboratory}
-                                        </option>
-                                    ))}
-                                </select>
+                            <div className="mb-6 grid gap-4 md:grid-cols-2">
+                                <div>
+                                    <div className="block text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                                        Numer projektu
+                                    </div>
+                                    <div className="mt-3 rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-900">
+                                        {orderDialog.product?.project_number || '—'}
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-semibold uppercase tracking-[0.18em] text-slate-500" htmlFor="laboratory">
+                                        Laboratorium
+                                    </label>
+                                    <select
+                                        id="laboratory"
+                                        value={orderDialog.laboratory}
+                                        onChange={(event) => setOrderDialog((prev) => ({ ...prev, laboratory: event.target.value }))}
+                                        className="mt-3 w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-500 focus:bg-white"
+                                    >
+                                        <option value="">Wybierz laboratorium</option>
+                                        {LABORATORIES.map((laboratory) => (
+                                            <option key={laboratory} value={laboratory}>
+                                                {laboratory}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
                             </div>
                         )}
 
-                        <div className="mb-6 grid gap-4 md:grid-cols-2">
+                        <div className="mb-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                             <div>
                                 <label className="block text-xs font-semibold uppercase tracking-[0.18em] text-slate-500" htmlFor="batch-number">
                                     Numer serii
@@ -466,15 +528,15 @@ function MainProductsPage({
                                 </p>
                             </div>
                             <div>
-                                <label className="block text-xs font-semibold uppercase tracking-[0.18em] text-slate-500" htmlFor="main-product-test-cost">
-                                    Koszt badania
+                                <label className="block text-xs font-semibold uppercase tracking-[0.18em] text-slate-500" htmlFor="test-cost">
+                                    Koszt badań
                                 </label>
                                 <input
-                                    id="main-product-test-cost"
+                                    id="test-cost"
                                     type="text"
                                     value={orderDialog.testCost}
                                     onChange={(event) => setOrderDialog((prev) => ({ ...prev, testCost: event.target.value }))}
-                                    placeholder="Np. 350 PLN"
+                                    placeholder="Np. 250 PLN"
                                     className="mt-3 w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-500 focus:bg-white"
                                 />
                             </div>
@@ -499,7 +561,7 @@ function MainProductsPage({
                                     Daty
                                 </h3>
                             </div>
-                            <div className="space-y-4">
+                            <div className="grid gap-4 xl:grid-cols-3">
                             <div>
                                 <label className="block text-xs font-semibold uppercase tracking-[0.18em] text-slate-500" htmlFor="production-date">
                                     Data produkcji

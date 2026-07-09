@@ -49,6 +49,21 @@ class VariantProductFinishedProductControlCreate(BaseModel):
     comment: Optional[str] = None
 
 
+class VariantProductFinishedProductControlPlaceholderItem(BaseModel):
+    sku: str
+    name: str
+    ean: str
+    laboratory_name: Optional[str] = None
+    asana_task_number: Optional[str] = None
+    product_project_number: str
+    product_batch_number: str
+    product_expiry_date: Optional[str] = None
+
+
+class VariantProductFinishedProductControlPlaceholderRequest(BaseModel):
+    items: list[VariantProductFinishedProductControlPlaceholderItem]
+
+
 class VariantProductFinishedProductControlBulkStatusUpdate(BaseModel):
     ids: list[int]
     label_status: str

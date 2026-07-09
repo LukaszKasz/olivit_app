@@ -61,10 +61,11 @@ function MainProductOrderedTestsPage({
         open: false,
         order: null,
     });
+    const [selectedOrderIds, setSelectedOrderIds] = useState([]);
     const [moveDialog, setMoveDialog] = useState({
         open: false,
         saving: false,
-        order: null,
+        orders: [],
         targetStatus: 'ordered_tests',
     });
 
@@ -97,6 +98,11 @@ function MainProductOrderedTestsPage({
         return orders.filter((order) => (order.workflow_status || 'ordered_tests') === viewMode);
     }, [orders, viewMode]);
 
+    useEffect(() => {
+        const availableIds = new Set(orders.map((order) => order.id));
+        setSelectedOrderIds((current) => current.filter((id) => availableIds.has(id)));
+    }, [orders]);
+
     const isPlannedTestDateOverdue = (plannedTestDate) => {
         if (!plannedTestDate) {
             return false;
@@ -117,32 +123,70 @@ function MainProductOrderedTestsPage({
         setOrders((current) => current.map((order) => (order.id === updatedOrder.id ? updatedOrder : order)));
     };
 
-    const handleMoveToPack = async (order) => {
+    const replaceOrdersInState = (updatedOrders) => {
+        const updatedById = new Map(updatedOrders.map((order) => [order.id, order]));
+        setOrders((current) => current.map((order) => updatedById.get(order.id) || order));
+    };
+
+    const visibleOrderIds = filteredOrders.map((order) => order.id);
+    const allVisibleSelected = visibleOrderIds.length > 0 && visibleOrderIds.every((id) => selectedOrderIds.includes(id));
+    const selectedOrders = orders.filter((order) => selectedOrderIds.includes(order.id));
+    const selectedOrder = selectedOrderIds.length === 1
+        ? selectedOrders[0] || null
+        : null;
+    const selectedStatuses = Array.from(new Set(selectedOrders.map((order) => order.workflow_status || 'ordered_tests')));
+    const selectedStatus = selectedStatuses.length === 1 ? selectedStatuses[0] : null;
+    const activeActionStatus = viewMode === 'all' ? selectedStatus : viewMode;
+
+    const toggleOrderSelection = (orderId) => {
+        setSelectedOrderIds((current) =>
+            current.includes(orderId)
+                ? current.filter((id) => id !== orderId)
+                : [...current, orderId]
+        );
+    };
+
+    const toggleAllVisibleOrders = () => {
+        setSelectedOrderIds((current) =>
+            allVisibleSelected
+                ? current.filter((id) => !visibleOrderIds.includes(id))
+                : Array.from(new Set([...current, ...visibleOrderIds]))
+        );
+    };
+
+    const updateOrdersWorkflowStatus = async (targetOrders, workflowStatus, successMessage, navigatePath) => {
         try {
-            const updatedOrder = await mainProductsAPI.updateOrderedTest(order.id, {
-                workflow_status: 'to_pack',
-            });
-            replaceOrderInState(updatedOrder);
-            setSuccess(`Przeniesiono ${order.project_number} do zakładki Do spakowania.`);
+            const updatedOrders = await Promise.all(
+                targetOrders.map((order) => mainProductsAPI.updateOrderedTest(order.id, { workflow_status: workflowStatus }))
+            );
+            replaceOrdersInState(updatedOrders);
+            setSelectedOrderIds([]);
+            setSuccess(successMessage);
             setError('');
-            navigate('/main-products/to-pack');
+            if (navigatePath) {
+                navigate(navigatePath);
+            }
         } catch (err) {
-            setError(err?.response?.data?.detail || err.message || 'Nie udało się przenieść pozycji do Do spakowania.');
+            setError(err?.response?.data?.detail || err.message || 'Nie udało się przenieść pozycji.');
         }
     };
 
+    const handleMoveToPack = async (order) => {
+        updateOrdersWorkflowStatus(
+            [order],
+            'to_pack',
+            `Przeniesiono ${order.project_number} do zakładki Do spakowania.`,
+            '/main-products/to-pack'
+        );
+    };
+
     const handleMoveToReleased = async (order) => {
-        try {
-            const updatedOrder = await mainProductsAPI.updateOrderedTest(order.id, {
-                workflow_status: 'released',
-            });
-            replaceOrderInState(updatedOrder);
-            setSuccess(`Przeniesiono ${order.project_number} do zakładki Zwolnione.`);
-            setError('');
-            navigate('/main-products/released');
-        } catch (err) {
-            setError(err?.response?.data?.detail || err.message || 'Nie udało się przenieść pozycji do zakładki Zwolnione.');
-        }
+        updateOrdersWorkflowStatus(
+            [order],
+            'released',
+            `Przeniesiono ${order.project_number} do zakładki Zwolnione.`,
+            '/main-products/released'
+        );
     };
 
     const openNotePreviewDialog = (order) => {
@@ -208,12 +252,14 @@ function MainProductOrderedTestsPage({
         }
     };
 
-    const openMoveDialog = (order) => {
-        const defaultTarget = MOVE_OPTIONS.find((option) => option.value !== (order.workflow_status || 'ordered_tests'));
+    const openMoveDialog = (targetOrders) => {
+        const normalizedOrders = Array.isArray(targetOrders) ? targetOrders : [targetOrders];
+        const currentStatus = normalizedOrders[0]?.workflow_status || 'ordered_tests';
+        const defaultTarget = MOVE_OPTIONS.find((option) => option.value !== currentStatus);
         setMoveDialog({
             open: true,
             saving: false,
-            order,
+            orders: normalizedOrders,
             targetStatus: defaultTarget?.value || 'ordered_tests',
         });
     };
@@ -226,13 +272,13 @@ function MainProductOrderedTestsPage({
         setMoveDialog({
             open: false,
             saving: false,
-            order: null,
+            orders: [],
             targetStatus: 'ordered_tests',
         });
     };
 
     const handleMoveOrder = async () => {
-        if (!moveDialog.order) {
+        if (moveDialog.orders.length === 0) {
             return;
         }
 
@@ -243,16 +289,22 @@ function MainProductOrderedTestsPage({
 
         try {
             setMoveDialog((current) => ({ ...current, saving: true }));
-            const updatedOrder = await mainProductsAPI.updateOrderedTest(moveDialog.order.id, {
-                workflow_status: moveDialog.targetStatus,
-            });
-            replaceOrderInState(updatedOrder);
-            setSuccess(`Przeniesiono ${moveDialog.order.project_number} do zakładki ${selectedOption.label}.`);
+            const updatedOrders = await Promise.all(
+                moveDialog.orders.map((order) => mainProductsAPI.updateOrderedTest(order.id, {
+                    workflow_status: moveDialog.targetStatus,
+                }))
+            );
+            replaceOrdersInState(updatedOrders);
+            const message = moveDialog.orders.length === 1
+                ? `Przeniesiono ${moveDialog.orders[0].project_number} do zakładki ${selectedOption.label}.`
+                : `Przeniesiono ${moveDialog.orders.length} pozycji do zakładki ${selectedOption.label}.`;
+            setSelectedOrderIds([]);
+            setSuccess(message);
             setError('');
             setMoveDialog({
                 open: false,
                 saving: false,
-                order: null,
+                orders: [],
                 targetStatus: 'ordered_tests',
             });
             navigate(selectedOption.path);
@@ -262,13 +314,14 @@ function MainProductOrderedTestsPage({
         }
     };
 
-    const openDocumentsDialog = (order, mode = 'add') => {
+    const openDocumentsDialog = (targetOrders, mode = 'add') => {
+        const normalizedOrders = Array.isArray(targetOrders) ? targetOrders : [targetOrders];
         setDocumentsDialog({
             open: true,
             mode,
             files: Array(DOCUMENT_SLOTS).fill(null),
             previewIndex: null,
-            targetOrders: [order],
+            targetOrders: normalizedOrders,
         });
     };
 
@@ -312,8 +365,11 @@ function MainProductOrderedTestsPage({
 
     const handleSaveDocuments = () => {
         const selectedDocumentsCount = documentsDialog.files.filter(Boolean).length;
-        const targetProject = documentsDialog.targetOrders[0]?.project_number || 'wybranej pozycji';
-        setSuccess(`Dodano ${selectedDocumentsCount} dokumentów do ${targetProject}.`);
+        const targetCount = documentsDialog.targetOrders.length;
+        const targetLabel = targetCount === 1
+            ? (documentsDialog.targetOrders[0]?.project_number || 'wybranej pozycji')
+            : `${targetCount} zaznaczonych pozycji`;
+        setSuccess(`Dodano ${selectedDocumentsCount} dokumentów do ${targetLabel}.`);
         setError('');
         closeDocumentsDialog();
     };
@@ -323,7 +379,7 @@ function MainProductOrderedTestsPage({
         : null;
     const isDocumentsPreviewMode = documentsDialog.mode === 'preview';
 
-    const showClarificationColumn = viewMode === 'to_clarify';
+    const showClarificationColumn = viewMode === 'to_clarify' || viewMode === 'all';
 
     return (
         <div className="w-full">
@@ -351,11 +407,127 @@ function MainProductOrderedTestsPage({
                 </div>
             )}
 
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600 shadow-sm">
+                <span>Zaznaczone: <span className="font-semibold text-slate-900">{selectedOrderIds.length}</span></span>
+                <div className="flex flex-wrap items-center gap-2">
+                    {(activeActionStatus === 'ordered_tests') && (
+                        <>
+                            <button
+                                type="button"
+                                onClick={() => openDocumentsDialog(selectedOrders)}
+                                className="rounded-2xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                disabled={selectedOrderIds.length === 0}
+                            >
+                                Dodaj dokumenty
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => updateOrdersWorkflowStatus(selectedOrders, 'to_pack', `Przeniesiono ${selectedOrderIds.length} pozycji do zakładki Do spakowania.`, '/main-products/to-pack')}
+                                className="rounded-2xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                disabled={selectedOrderIds.length === 0}
+                            >
+                                Przekaż do spakowania
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => selectedOrder && openClarifyDialog(selectedOrder)}
+                                className="rounded-2xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                disabled={!selectedOrder}
+                            >
+                                Do wyjaśnienia
+                            </button>
+                        </>
+                    )}
+                    {(activeActionStatus === 'to_pack') && (
+                        <>
+                            <button
+                                type="button"
+                                onClick={() => selectedOrder && openDocumentsDialog(selectedOrder, 'preview')}
+                                className="rounded-2xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                disabled={!selectedOrder}
+                            >
+                                Pokaż dokumenty
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => updateOrdersWorkflowStatus(selectedOrders, 'released', `Przeniesiono ${selectedOrderIds.length} pozycji do zakładki Zwolnione.`, '/main-products/released')}
+                                className="rounded-2xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                disabled={selectedOrderIds.length === 0}
+                            >
+                                Przenieś do zwolnionych
+                            </button>
+                        </>
+                    )}
+                    {(activeActionStatus === 'to_clarify') && (
+                        <>
+                            <button
+                                type="button"
+                                onClick={() => selectedOrder && openDocumentsDialog(selectedOrder, 'preview')}
+                                className="rounded-2xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                disabled={!selectedOrder}
+                            >
+                                Pokaż dokumenty
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => selectedOrder && openNotePreviewDialog(selectedOrder)}
+                                className="rounded-2xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                disabled={!selectedOrder}
+                            >
+                                Pokaż notatkę
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => selectedOrder && openClarifyDialog(selectedOrder)}
+                                className="rounded-2xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                disabled={!selectedOrder}
+                            >
+                                Edytuj notatkę
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => openMoveDialog(selectedOrders)}
+                                className="rounded-2xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                disabled={selectedOrderIds.length === 0 || !selectedStatus}
+                            >
+                                Przenieś do
+                            </button>
+                        </>
+                    )}
+                    {(activeActionStatus === 'released' || activeActionStatus === 'archive') && (
+                        <button
+                            type="button"
+                            onClick={() => selectedOrder && openDocumentsDialog(selectedOrder, 'preview')}
+                            className="rounded-2xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                            disabled={!selectedOrder}
+                        >
+                            Pokaż dokumenty
+                        </button>
+                    )}
+                    <button
+                        type="button"
+                        onClick={() => setSelectedOrderIds([])}
+                        className="rounded-2xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                        disabled={selectedOrderIds.length === 0}
+                    >
+                        Wyczyść zaznaczenie
+                    </button>
+                </div>
+            </div>
+
             <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
                 <div className="overflow-x-auto">
                     <table className="min-w-[1440px] w-full text-left text-sm">
                         <thead className="bg-slate-50 text-xs uppercase tracking-[0.18em] text-slate-500">
                             <tr>
+                                <th className="px-6 py-4">
+                                    <input
+                                        type="checkbox"
+                                        checked={allVisibleSelected}
+                                        onChange={toggleAllVisibleOrders}
+                                        aria-label="Zaznacz wszystkie widoczne badania"
+                                    />
+                                </th>
                                 <th className="px-6 py-4">Numer projektu</th>
                                 <th className="px-6 py-4">Numer Asana</th>
                                 <th className="px-6 py-4">Numer PO</th>
@@ -363,34 +535,44 @@ function MainProductOrderedTestsPage({
                                 <th className="px-6 py-4">Nazwa projektu / produktu</th>
                                 <th className="px-6 py-4">Laboratorium</th>
                                 <th className="px-6 py-4">Numer serii</th>
+                                <th className="px-6 py-4">Koszt badań</th>
                                 <th className="px-6 py-4">Data produkcji</th>
                                 <th className="px-6 py-4">Data ważności</th>
                                 <th className="px-6 py-4">Data realizacji badania</th>
                                 <th className="px-6 py-4">Status</th>
                                 {showClarificationColumn && <th className="px-6 py-4">Notatka</th>}
-                                <th className="px-6 py-4 text-right">Akcje</th>
                             </tr>
                         </thead>
                         <tbody>
                             {loading ? (
                                 <tr className="border-t border-slate-100">
-                                    <td colSpan={showClarificationColumn ? 13 : 12} className="px-6 py-10 text-center text-slate-500">
+                                    <td colSpan={showClarificationColumn ? 14 : 13} className="px-6 py-10 text-center text-slate-500">
                                         Ładowanie zleconych badań...
                                     </td>
                                 </tr>
                             ) : filteredOrders.length === 0 ? (
                                 <tr className="border-t border-slate-100">
-                                    <td colSpan={showClarificationColumn ? 13 : 12} className="px-6 py-10 text-center text-slate-500">
+                                    <td colSpan={showClarificationColumn ? 14 : 13} className="px-6 py-10 text-center text-slate-500">
                                         Brak pozycji w tym widoku.
                                     </td>
                                 </tr>
                             ) : (
                                 filteredOrders.map((order) => {
+                                    const currentStatus = order.workflow_status || 'ordered_tests';
                                     const isOverdue = isPlannedTestDateOverdue(order.planned_test_date);
-                                    const statusMeta = STATUS_META[order.workflow_status || 'ordered_tests'] || STATUS_META.ordered_tests;
+                                    const statusMeta = STATUS_META[currentStatus] || STATUS_META.ordered_tests;
 
                                     return (
                                         <tr key={order.id} className="border-t border-slate-100 hover:bg-slate-50/80">
+                                            <td className="px-6 py-4">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={selectedOrderIds.includes(order.id)}
+                                                    onChange={() => toggleOrderSelection(order.id)}
+                                                    onClick={(event) => event.stopPropagation()}
+                                                    aria-label={`Zaznacz badanie ${order.project_number}`}
+                                                />
+                                            </td>
                                             <td className="whitespace-nowrap px-6 py-4 font-semibold text-slate-900">
                                                 {order.project_number}
                                             </td>
@@ -413,6 +595,9 @@ function MainProductOrderedTestsPage({
                                                 {order.batch_number || '—'}
                                             </td>
                                             <td className="whitespace-nowrap px-6 py-4 text-slate-700">
+                                                {order.test_cost || '—'}
+                                            </td>
+                                            <td className="whitespace-nowrap px-6 py-4 text-slate-700">
                                                 {order.production_date || '—'}
                                             </td>
                                             <td className="whitespace-nowrap px-6 py-4 text-slate-700">
@@ -431,93 +616,6 @@ function MainProductOrderedTestsPage({
                                                     {order.clarification_note || '—'}
                                                 </td>
                                             )}
-                                            <td className="px-6 py-4">
-                                                <div className="flex justify-end gap-2 whitespace-nowrap">
-                                                    {viewMode === 'to_clarify' ? (
-                                                        <>
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => openDocumentsDialog(order, 'preview')}
-                                                                className="rounded-2xl border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
-                                                            >
-                                                                Pokaż dokumenty
-                                                            </button>
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => openNotePreviewDialog(order)}
-                                                                className="rounded-2xl border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
-                                                            >
-                                                                Pokaż notatkę
-                                                            </button>
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => openClarifyDialog(order)}
-                                                                className="rounded-2xl border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
-                                                            >
-                                                                Edytuj notatkę
-                                                            </button>
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => openMoveDialog(order)}
-                                                                className="rounded-2xl border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
-                                                            >
-                                                                Przenieś do
-                                                            </button>
-                                                        </>
-                                                    ) : viewMode === 'to_pack' ? (
-                                                        <>
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => openDocumentsDialog(order, 'preview')}
-                                                                className="rounded-2xl border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
-                                                            >
-                                                                Pokaż dokumenty
-                                                            </button>
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => handleMoveToReleased(order)}
-                                                                className="rounded-2xl border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
-                                                            >
-                                                                Przenieś do zwolnionych
-                                                            </button>
-                                                        </>
-                                                    ) : viewMode === 'archive' || viewMode === 'released' ? (
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => openDocumentsDialog(order, 'preview')}
-                                                            className="rounded-2xl border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
-                                                        >
-                                                            Pokaż dokumenty
-                                                        </button>
-                                                    ) : (
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => openDocumentsDialog(order)}
-                                                            className="rounded-2xl border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
-                                                        >
-                                                            Dodaj dokumenty
-                                                        </button>
-                                                    )}
-                                                    {viewMode === 'ordered_tests' && (
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => handleMoveToPack(order)}
-                                                            className="rounded-2xl border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
-                                                        >
-                                                            Przekaż do spakowania
-                                                        </button>
-                                                    )}
-                                                    {viewMode === 'ordered_tests' && (
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => openClarifyDialog(order)}
-                                                            className="rounded-2xl border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
-                                                        >
-                                                            Do wyjaśnienia
-                                                        </button>
-                                                    )}
-                                                </div>
-                                            </td>
                                         </tr>
                                     );
                                 })
@@ -537,7 +635,9 @@ function MainProductOrderedTestsPage({
                             <p className="mt-1 text-sm text-slate-600">
                                 {isDocumentsPreviewMode
                                     ? `Dokumenty przypisane do pozycji: ${documentsDialog.targetOrders[0]?.project_number || '—'}`
-                                    : `Dodaj do 6 dokumentów dla pozycji: ${documentsDialog.targetOrders[0]?.project_number || '—'}`}
+                                    : documentsDialog.targetOrders.length === 1
+                                        ? `Dodaj do 6 dokumentów dla pozycji: ${documentsDialog.targetOrders[0]?.project_number || '—'}`
+                                        : `Dodaj do 6 dokumentów dla zaznaczonych pozycji: ${documentsDialog.targetOrders.length}`}
                             </p>
                         </div>
                         <div className="grid gap-4 px-6 py-6">
@@ -707,7 +807,9 @@ function MainProductOrderedTestsPage({
                         <div className="mb-6">
                             <h2 className="text-2xl font-semibold text-slate-900">Przenieś do</h2>
                             <p className="mt-2 text-sm text-slate-600">
-                                {moveDialog.order?.project_number} / {moveDialog.order?.name}
+                                {moveDialog.orders.length === 1
+                                    ? `${moveDialog.orders[0]?.project_number} / ${moveDialog.orders[0]?.name}`
+                                    : `Zaznaczone pozycje: ${moveDialog.orders.length}`}
                             </p>
                         </div>
                         <div className="mb-6">
@@ -724,7 +826,7 @@ function MainProductOrderedTestsPage({
                                     <option
                                         key={option.value}
                                         value={option.value}
-                                        disabled={option.value === (moveDialog.order?.workflow_status || 'ordered_tests')}
+                                        disabled={option.value === (moveDialog.orders[0]?.workflow_status || 'ordered_tests')}
                                     >
                                         {option.label}
                                     </option>

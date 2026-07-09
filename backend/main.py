@@ -58,6 +58,7 @@ from variant_product_finished_product_controls_api import (
     VariantProductFinishedProductControlBulkIds,
     VariantProductFinishedProductControlBulkStatusUpdate,
     VariantProductFinishedProductControlCreate,
+    VariantProductFinishedProductControlPlaceholderRequest,
     VariantProductFinishedProductControlResponse,
 )
 from variant_products_seed import load_variant_products_seed
@@ -324,6 +325,8 @@ def serialize_variant_batch_row(
         "laboratory_name": row.laboratory_name,
         "batch_number": row.batch_number,
         "asana_task_number": row.asana_task_number,
+        "purchase_order_number": row.purchase_order_number,
+        "test_cost": row.test_cost,
         "batch_added_at": row.batch_added_at,
         "ordered_at": row.ordered_at,
         "production_date": row.production_date,
@@ -637,6 +640,65 @@ def create_default_variant_finished_product_control(
     )
 
 
+def create_variant_finished_product_control_placeholder(
+    *,
+    sku: str,
+    name: str,
+    ean: str,
+    laboratory_name: str | None,
+    asana_task_number: str | None,
+    product_project_number: str,
+    product_batch_number: str,
+    product_expiry_date: str | None,
+) -> VariantProductFinishedProductControl:
+    return VariantProductFinishedProductControl(
+        ordered_test_id=None,
+        sku=sku,
+        name=name,
+        ean=ean,
+        laboratory_name=laboratory_name,
+        asana_task_number=asana_task_number,
+        label_status="current",
+        printed_material_type="",
+        product_name=name,
+        product_project_number=product_project_number,
+        product_ean_number=ean,
+        product_batch_number=product_batch_number,
+        product_expiry_date=product_expiry_date or "",
+        control_date="",
+        market_label_version="",
+        active_substances_match_pds="",
+        active_substances_match_pds_note=None,
+        label_version_matches_used_version="",
+        label_version_matches_used_version_note=None,
+        has_printing_errors="",
+        has_printing_errors_note=None,
+        has_graphic_design_errors="",
+        has_graphic_design_errors_note=None,
+        print_correctness="",
+        print_correctness_note=None,
+        has_labeling_errors="",
+        has_labeling_errors_note=None,
+        cap_is_correct="",
+        cap_is_correct_note=None,
+        induction_seal_weld_correct="",
+        induction_seal_weld_correct_note=None,
+        induction_seal_opening_correct="",
+        induction_seal_opening_correct_note=None,
+        package_is_dirty="",
+        package_is_dirty_note=None,
+        package_is_damaged="",
+        package_is_damaged_note=None,
+        qr_code_is_active="",
+        qr_code_is_active_note=None,
+        package_contents_match_card="",
+        package_contents_match_card_note=None,
+        product_verified="",
+        product_verified_note=None,
+        comment=None,
+    )
+
+
 def create_variant_finished_product_control_from_batch_data(
     *,
     sku: str,
@@ -842,6 +904,18 @@ def get_variant_finished_product_control_map(
         if row.ordered_test_id is not None and row.ordered_test_id not in result:
             result[row.ordered_test_id] = row
     return result
+
+
+def get_variant_finished_product_control_map_for_batch_rows(
+    db: Session,
+    rows: list[VariantProductBatchTestOrder | VariantProductBatchTestOrderArchive],
+) -> dict[int, VariantProductFinishedProductControl]:
+    source_ids = [
+        get_variant_batch_related_controls_source_id(row)
+        for row in rows
+        if get_variant_batch_related_controls_source_id(row) is not None
+    ]
+    return get_variant_finished_product_control_map(db, source_ids)
 
 
 def serialize_database_value(value):
@@ -1438,6 +1512,8 @@ def ensure_main_product_test_orders_schema() -> None:
         statements.append("ALTER TABLE main_product_test_orders ADD COLUMN batch_number VARCHAR(255)")
     if "asana_task_number" not in columns:
         statements.append("ALTER TABLE main_product_test_orders ADD COLUMN asana_task_number VARCHAR(255)")
+    if "test_cost" not in columns:
+        statements.append("ALTER TABLE main_product_test_orders ADD COLUMN test_cost VARCHAR(255)")
     if "production_date" not in columns:
         statements.append("ALTER TABLE main_product_test_orders ADD COLUMN production_date VARCHAR(50)")
     if "expiry_date" not in columns:
@@ -1482,6 +1558,10 @@ def ensure_variant_product_batch_test_orders_schema() -> None:
         statements.append("ALTER TABLE variant_product_batch_test_orders ALTER COLUMN ordered_at DROP NOT NULL")
     if "asana_task_number" not in columns:
         statements.append("ALTER TABLE variant_product_batch_test_orders ADD COLUMN asana_task_number VARCHAR(255)")
+    if "purchase_order_number" not in columns:
+        statements.append("ALTER TABLE variant_product_batch_test_orders ADD COLUMN purchase_order_number VARCHAR(255)")
+    if "test_cost" not in columns:
+        statements.append("ALTER TABLE variant_product_batch_test_orders ADD COLUMN test_cost VARCHAR(255)")
     if "workflow_status" not in columns:
         statements.append("ALTER TABLE variant_product_batch_test_orders ADD COLUMN workflow_status VARCHAR(50)")
     if "clarification_note" not in columns:
@@ -1575,6 +1655,8 @@ def ensure_variant_product_batch_test_orders_archive_schema() -> None:
         "test_cost": "VARCHAR(255)",
         "po_number": "VARCHAR(255)",
         "asana_task_number": "VARCHAR(255)",
+        "purchase_order_number": "VARCHAR(255)",
+        "test_cost": "VARCHAR(255)",
         "workflow_status": "VARCHAR(50)",
         "clarification_note": "VARCHAR(2000)",
         "label_status": "VARCHAR(50)",
@@ -2220,10 +2302,11 @@ def get_variant_products(
     query = db.query(VariantProduct)
     if q and q.strip():
         pattern = f"%{q.strip()}%"
+        project_pattern = f"{q.strip()}%"
         query = query.filter(
             or_(
-                VariantProduct.project_number.ilike(pattern),
                 VariantProduct.sku.ilike(pattern),
+                VariantProduct.sku.ilike(project_pattern),
                 VariantProduct.name.ilike(pattern),
                 VariantProduct.ean.ilike(pattern),
             )
@@ -2269,6 +2352,7 @@ def create_main_product_test_order(
     laboratory_name = (payload.laboratory_name or "").strip()
     batch_number = payload.batch_number.strip()
     asana_task_number = (payload.asana_task_number or "").strip()
+    test_cost = (payload.test_cost or "").strip()
     production_date = (payload.production_date or "").strip()
     expiry_date = (payload.expiry_date or "").strip()
     planned_test_date = (payload.planned_test_date or "").strip()
@@ -2286,10 +2370,10 @@ def create_main_product_test_order(
         laboratory_name=laboratory_name,
         batch_number=batch_number,
         asana_task_number=asana_task_number or None,
+        test_cost=test_cost or None,
         production_date=production_date or None,
         expiry_date=expiry_date or None,
         planned_test_date=planned_test_date or None,
-        test_cost=test_cost or None,
         po_number=po_number or None,
         workflow_status="ordered_tests",
     )
@@ -2347,12 +2431,12 @@ def get_variant_product_batch_test_orders(
         .order_by(VariantProductBatchTestOrder.batch_added_at.desc(), VariantProductBatchTestOrder.id.desc())
         .all()
     )
-    control_map = get_variant_finished_product_control_map(db, [row.id for row in rows])
+    control_map = get_variant_finished_product_control_map_for_batch_rows(db, rows)
     related_controls_map = get_related_label_controls_for_batch_rows(db, rows)
     return [
         serialize_variant_batch_row(
             row,
-            label_control_id=getattr(control_map.get(row.id), "id", None),
+            label_control_id=getattr(control_map.get(get_variant_batch_related_controls_source_id(row)), "id", None),
             label_status=get_aggregated_label_status(related_controls_map.get(row.id, [])),
             related_label_controls_count=len(related_controls_map.get(row.id, [])),
             related_label_controls_resolved_count=sum(
@@ -2376,12 +2460,12 @@ def get_variant_product_batch_test_orders_released(
         .order_by(VariantProductBatchTestOrder.batch_added_at.desc(), VariantProductBatchTestOrder.id.desc())
         .all()
     )
-    control_map = get_variant_finished_product_control_map(db, [row.id for row in rows])
+    control_map = get_variant_finished_product_control_map_for_batch_rows(db, rows)
     related_controls_map = get_related_label_controls_for_batch_rows(db, rows)
     return [
         serialize_variant_batch_row(
             row,
-            label_control_id=getattr(control_map.get(row.id), "id", None),
+            label_control_id=getattr(control_map.get(get_variant_batch_related_controls_source_id(row)), "id", None),
             label_status=get_aggregated_label_status(related_controls_map.get(row.id, [])),
             related_label_controls_count=len(related_controls_map.get(row.id, [])),
             related_label_controls_resolved_count=sum(
@@ -2405,12 +2489,12 @@ def get_variant_product_batch_test_orders_to_clarify(
         .order_by(VariantProductBatchTestOrder.batch_added_at.desc(), VariantProductBatchTestOrder.id.desc())
         .all()
     )
-    control_map = get_variant_finished_product_control_map(db, [row.id for row in rows])
+    control_map = get_variant_finished_product_control_map_for_batch_rows(db, rows)
     related_controls_map = get_related_label_controls_for_batch_rows(db, rows)
     return [
         serialize_variant_batch_row(
             row,
-            label_control_id=getattr(control_map.get(row.id), "id", None),
+            label_control_id=getattr(control_map.get(get_variant_batch_related_controls_source_id(row)), "id", None),
             label_status=get_aggregated_label_status(related_controls_map.get(row.id, [])),
             related_label_controls_count=len(related_controls_map.get(row.id, [])),
             related_label_controls_resolved_count=sum(
@@ -2433,14 +2517,11 @@ def get_variant_product_batch_test_archive(
         .order_by(VariantProductBatchTestOrderArchive.archived_at.desc(), VariantProductBatchTestOrderArchive.id.desc())
         .all()
     )
-    control_map = get_variant_finished_product_control_map(
-        db,
-        [row.ordered_test_id for row in rows if row.ordered_test_id is not None],
-    )
+    control_map = get_variant_finished_product_control_map_for_batch_rows(db, rows)
     serialized_rows = []
     related_controls_map = get_related_label_controls_for_batch_rows(db, rows)
     for row in rows:
-        control = control_map.get(row.ordered_test_id) if row.ordered_test_id is not None else None
+        control = control_map.get(get_variant_batch_related_controls_source_id(row))
         serialized = serialize_variant_batch_row(
             row,
             label_control_id=getattr(control, "id", None),
@@ -2513,6 +2594,8 @@ def create_variant_product_batch_test_order(
     laboratory_name = (payload.laboratory_name or "").strip()
     batch_number = payload.batch_number.strip()
     asana_task_number = (payload.asana_task_number or "").strip()
+    purchase_order_number = (payload.purchase_order_number or "").strip()
+    test_cost = (payload.test_cost or "").strip()
     production_date = (payload.production_date or "").strip()
     expiry_date = (payload.expiry_date or "").strip()
     planned_test_date = (payload.planned_test_date or "").strip()
@@ -2532,10 +2615,11 @@ def create_variant_product_batch_test_order(
         laboratory_name=laboratory_name or None,
         batch_number=batch_number,
         asana_task_number=asana_task_number or None,
+        purchase_order_number=purchase_order_number or None,
+        test_cost=test_cost or None,
         production_date=production_date or None,
         expiry_date=expiry_date or None,
         planned_test_date=planned_test_date or None,
-        test_cost=test_cost or None,
         po_number=po_number or None,
         workflow_status="ordered_tests",
         label_status="current",
@@ -2902,7 +2986,8 @@ def create_variant_product_batch_retest_order(
 
     refreshed_control = (
         db.query(VariantProductFinishedProductControl)
-        .filter(VariantProductFinishedProductControl.ordered_test_id == new_order.id)
+        .filter(VariantProductFinishedProductControl.ordered_test_id == original_test_order_id)
+        .order_by(VariantProductFinishedProductControl.id.desc())
         .first()
     )
     return serialize_variant_batch_row(new_order, label_control_id=getattr(refreshed_control, "id", None))
@@ -2951,10 +3036,11 @@ def archive_variant_product_batch_test_orders(
                 laboratory_name=row.laboratory_name,
                 batch_number=row.batch_number,
                 asana_task_number=row.asana_task_number,
+                purchase_order_number=row.purchase_order_number,
+                test_cost=row.test_cost,
                 production_date=row.production_date,
                 expiry_date=row.expiry_date,
                 planned_test_date=row.planned_test_date,
-                test_cost=row.test_cost,
                 po_number=row.po_number,
                 workflow_status="archive",
                 clarification_note=row.clarification_note,
@@ -3204,6 +3290,78 @@ def get_variant_product_finished_product_controls(
         )
         for row in rows
     ]
+
+
+@app.post(
+    "/api/variant-products/finished-product-controls/placeholders",
+    response_model=list[VariantProductFinishedProductControlResponse],
+    status_code=status.HTTP_201_CREATED,
+)
+def create_variant_product_finished_product_control_placeholders(
+    payload: VariantProductFinishedProductControlPlaceholderRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _ = current_user
+
+    created_controls: list[VariantProductFinishedProductControl] = []
+    for item in payload.items:
+        sku = item.sku.strip()
+        name = item.name.strip()
+        ean = item.ean.strip()
+        product_project_number = item.product_project_number.strip()
+        product_batch_number = item.product_batch_number.strip()
+        laboratory_name = (item.laboratory_name or "").strip() or None
+        asana_task_number = (item.asana_task_number or "").strip() or None
+        product_expiry_date = (item.product_expiry_date or "").strip() or None
+
+        if not sku or not name or not ean or not product_project_number or not product_batch_number:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="sku, name, ean, product_project_number and product_batch_number are required",
+            )
+
+        control = (
+            db.query(VariantProductFinishedProductControl)
+            .filter(
+                VariantProductFinishedProductControl.ordered_test_id.is_(None),
+                VariantProductFinishedProductControl.sku == sku,
+                VariantProductFinishedProductControl.product_batch_number == product_batch_number,
+                VariantProductFinishedProductControl.label_status == "current",
+            )
+            .first()
+        )
+
+        if not control:
+            control = create_variant_finished_product_control_placeholder(
+                sku=sku,
+                name=name,
+                ean=ean,
+                laboratory_name=laboratory_name,
+                asana_task_number=asana_task_number,
+                product_project_number=product_project_number,
+                product_batch_number=product_batch_number,
+                product_expiry_date=product_expiry_date,
+            )
+        else:
+            control.name = name
+            control.ean = ean
+            control.laboratory_name = laboratory_name
+            control.asana_task_number = asana_task_number
+            control.product_name = name
+            control.product_project_number = product_project_number
+            control.product_ean_number = ean
+            control.product_batch_number = product_batch_number
+            control.product_expiry_date = product_expiry_date or ""
+            control.label_status = "current"
+
+        db.add(control)
+        created_controls.append(control)
+
+    db.commit()
+    for control in created_controls:
+        db.refresh(control)
+    return [serialize_variant_finished_product_control_row(control) for control in created_controls]
 
 
 @app.post(
@@ -3523,7 +3681,7 @@ def relabel_variant_product_finished_product_controls(
             product_verified_note=control.product_verified_note,
             comment=control.comment,
         )
-        control.label_status = "archived"
+        control.label_status = "relabel_requested"
         db.add(control)
         db.add(clone)
         if control.ordered_test_id is not None:
