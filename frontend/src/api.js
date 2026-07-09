@@ -8,7 +8,16 @@ function getApiBaseUrl() {
         return appBasePath;
     }
 
-    return import.meta.env.VITE_API_BASE_URL || 'http://localhost:8001';
+    const configuredApiBaseUrl = import.meta.env.VITE_API_BASE_URL?.trim();
+    if (configuredApiBaseUrl) {
+        return configuredApiBaseUrl;
+    }
+
+    if (import.meta.env.DEV) {
+        return 'http://localhost:8001';
+    }
+
+    return window.location.origin;
 }
 
 const API_BASE_URL = getApiBaseUrl();
