@@ -6,6 +6,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COMPOSE_FILE="$ROOT_DIR/docker-compose.yml"
 PROJECTS_DIR="$(cd "$ROOT_DIR/.." && pwd)"
 NGINX_DIR="$PROJECTS_DIR/nginx"
+NGINX_RESTART_SCRIPT="$NGINX_DIR/restart-docker.sh"
 
 if ! command -v docker >/dev/null 2>&1; then
     echo "Docker nie jest zainstalowany albo nie jest dostepny w PATH." >&2
@@ -22,8 +23,21 @@ if [[ ! -f "$COMPOSE_FILE" ]]; then
     exit 1
 fi
 
+if [[ ! -d "$NGINX_DIR" ]]; then
+    echo "Nie znaleziono katalogu nginx: $NGINX_DIR." >&2
+    exit 1
+fi
+
+if [[ ! -f "$NGINX_RESTART_SCRIPT" ]]; then
+    echo "Nie znaleziono skryptu restartu nginx: $NGINX_RESTART_SCRIPT." >&2
+    exit 1
+fi
+
 echo "Restartuje nginx..."
-bash "$NGINX_DIR/restart-docker.sh"
+(
+    cd "$NGINX_DIR"
+    bash "$NGINX_RESTART_SCRIPT"
+)
 
 echo "Przechodze do katalogu projektu: $ROOT_DIR"
 cd "$ROOT_DIR"
