@@ -26,6 +26,8 @@ const resources = {
             "login.buttonLoading": "Signing in...",
             "login.noAccount": "Don't have an account?",
             "login.errorInvalid": "Login failed. Please check your credentials.",
+            "login.errorNetwork": "Cannot reach the server. Check the deployment proxy and API URL.",
+            "login.errorServer": "The server is unavailable. The database connection may be down. Try again later.",
 
             // Register Page
             "register.title": "Create Account",
@@ -114,6 +116,8 @@ const resources = {
             "login.buttonLoading": "Logowanie...",
             "login.noAccount": "Nie masz konta?",
             "login.errorInvalid": "Logowanie nie powiodło się. Sprawdź swoje dane.",
+            "login.errorNetwork": "Nie można połączyć się z serwerem. Sprawdź proxy wdrożenia i adres API.",
+            "login.errorServer": "Serwer jest niedostępny. Możliwy problem z połączeniem do bazy danych. Spróbuj ponownie później.",
 
             // Register Page
             "register.title": "Utwórz konto",

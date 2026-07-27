@@ -1586,8 +1586,6 @@ def ensure_main_product_test_orders_schema() -> None:
         statements.append("ALTER TABLE main_product_test_orders ADD COLUMN expiry_date VARCHAR(50)")
     if "planned_test_date" not in columns:
         statements.append("ALTER TABLE main_product_test_orders ADD COLUMN planned_test_date VARCHAR(50)")
-    if "test_cost" not in columns:
-        statements.append("ALTER TABLE main_product_test_orders ADD COLUMN test_cost VARCHAR(255)")
     if "po_number" not in columns:
         statements.append("ALTER TABLE main_product_test_orders ADD COLUMN po_number VARCHAR(255)")
     if "workflow_status" not in columns:
@@ -1640,7 +1638,6 @@ def ensure_variant_product_batch_test_orders_schema() -> None:
         "production_date": "VARCHAR(50)",
         "expiry_date": "VARCHAR(50)",
         "planned_test_date": "VARCHAR(50)",
-        "test_cost": "VARCHAR(255)",
         "po_number": "VARCHAR(255)",
         "batch_added_at": "TIMESTAMP WITH TIME ZONE",
         "printed_material_type": "VARCHAR(100)",
@@ -1722,7 +1719,6 @@ def ensure_variant_product_batch_test_orders_archive_schema() -> None:
         "po_number": "VARCHAR(255)",
         "asana_task_number": "VARCHAR(255)",
         "purchase_order_number": "VARCHAR(255)",
-        "test_cost": "VARCHAR(255)",
         "workflow_status": "VARCHAR(50)",
         "clarification_note": "VARCHAR(2000)",
         "label_status": "VARCHAR(50)",

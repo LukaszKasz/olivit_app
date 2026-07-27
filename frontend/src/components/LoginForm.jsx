@@ -32,9 +32,17 @@ function LoginForm() {
             tokenManager.setToken(response.access_token);
             navigate('/main-products');
         } catch (err) {
-            setError(
-                err.response?.data?.detail || t('login.errorInvalid')
-            );
+            if (!err.response) {
+                setError(t('login.errorNetwork'));
+                return;
+            }
+
+            if (err.response.status >= 500) {
+                setError(t('login.errorServer'));
+                return;
+            }
+
+            setError(err.response.data?.detail || t('login.errorInvalid'));
         } finally {
             setLoading(false);
         }
