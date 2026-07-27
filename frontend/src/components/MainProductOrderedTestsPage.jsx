@@ -516,9 +516,9 @@ function MainProductOrderedTestsPage({
             </div>
 
             <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
-                <div className="overflow-x-auto">
+                <div className="max-h-[calc(100vh-20rem)] overflow-auto">
                     <table className="min-w-[1440px] w-full text-left text-sm">
-                        <thead className="bg-slate-50 text-xs uppercase tracking-[0.18em] text-slate-500">
+                        <thead className="sticky top-0 z-10 bg-slate-50 text-xs uppercase tracking-[0.18em] text-slate-500">
                             <tr>
                                 <th className="px-6 py-4">
                                     <input
