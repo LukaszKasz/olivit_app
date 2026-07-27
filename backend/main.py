@@ -58,6 +58,7 @@ from variant_product_finished_product_controls_api import (
     VariantProductFinishedProductControlBulkIds,
     VariantProductFinishedProductControlBulkStatusUpdate,
     VariantProductFinishedProductControlCreate,
+    VariantProductFinishedProductControlDocumentsRequest,
     VariantProductFinishedProductControlPlaceholderRequest,
     VariantProductFinishedProductControlResponse,
 )
@@ -436,6 +437,7 @@ def serialize_variant_finished_product_control_row(
     original_test_order_id: int | None = None,
     original_label_control_id: int | None = None,
     po_number: str | None = None,
+    batch_linked_document_names: list[str] | None = None,
 ) -> dict:
     return {
         "id": row.id,
@@ -457,6 +459,7 @@ def serialize_variant_finished_product_control_row(
         "product_project_number": row.product_project_number,
         "product_ean_number": row.product_ean_number,
         "product_batch_number": row.product_batch_number,
+        "sample_location": row.sample_location,
         "product_expiry_date": row.product_expiry_date,
         "control_date": row.control_date,
         "market_label_version": row.market_label_version,
@@ -498,6 +501,8 @@ def serialize_variant_finished_product_control_row(
             for field in FINISHED_PRODUCT_CONTROL_QUESTION_FIELDS
         },
         "comment": row.comment,
+        "linked_document_names": parse_linked_document_names(row.linked_document_names),
+        "batch_linked_document_names": batch_linked_document_names or [],
         "created_at": row.created_at,
     }
 
@@ -1776,6 +1781,8 @@ def ensure_variant_product_finished_product_controls_schema() -> None:
         "package_contents_match_card_note": "VARCHAR(2000)",
         "product_verified_note": "VARCHAR(2000)",
         "carton_market_label_version": "VARCHAR(255)",
+        "linked_document_names": "VARCHAR(4000)",
+        "sample_location": "VARCHAR(255)",
     }
     extra_columns.update({
         f"carton_{field}": column_type
@@ -3308,7 +3315,7 @@ def get_variant_product_finished_product_controls(
         .all()
     )
     ordered_test_ids = sorted({row.ordered_test_id for row in rows if row.ordered_test_id is not None})
-    order_map: dict[int, VariantProductBatchTestOrder] = {}
+    order_map: dict[int, VariantProductBatchTestOrder | VariantProductBatchTestOrderArchive] = {}
     if ordered_test_ids:
         orders = (
             db.query(VariantProductBatchTestOrder)
@@ -3316,6 +3323,15 @@ def get_variant_product_finished_product_controls(
             .all()
         )
         order_map = {order.id: order for order in orders}
+        archived_orders = (
+            db.query(VariantProductBatchTestOrderArchive)
+            .filter(VariantProductBatchTestOrderArchive.ordered_test_id.in_(ordered_test_ids))
+            .order_by(VariantProductBatchTestOrderArchive.id.desc())
+            .all()
+        )
+        for archived_order in archived_orders:
+            if archived_order.ordered_test_id is not None:
+                order_map.setdefault(archived_order.ordered_test_id, archived_order)
 
     original_order_ids = sorted({
         order.original_test_order_id
@@ -3356,6 +3372,11 @@ def get_variant_product_finished_product_controls(
                 order_map[row.ordered_test_id].po_number
                 if row.ordered_test_id is not None and row.ordered_test_id in order_map
                 else None
+            ),
+            batch_linked_document_names=(
+                parse_linked_document_names(order_map[row.ordered_test_id].linked_document_names)
+                if row.ordered_test_id is not None and row.ordered_test_id in order_map
+                else []
             ),
         )
         for row in rows
@@ -3483,6 +3504,7 @@ def create_variant_product_finished_product_control(
         "product_project_number": payload.product_project_number.strip(),
         "product_ean_number": payload.product_ean_number.strip(),
         "product_batch_number": payload.product_batch_number.strip(),
+        "sample_location": payload.sample_location.strip(),
         "product_expiry_date": payload.product_expiry_date.strip(),
         "control_date": payload.control_date.strip(),
         "market_label_version": payload.market_label_version.strip(),
@@ -3670,6 +3692,7 @@ def update_variant_product_finished_product_controls_status(
 
     ids = sorted(set(payload.ids))
     label_status = payload.label_status.strip()
+    clarification_comment = (payload.comment or "").strip()
 
     if not ids:
         raise HTTPException(
@@ -3706,14 +3729,67 @@ def update_variant_product_finished_product_controls_status(
 
     for control in controls:
         control.label_status = label_status
+        if label_status == "incorrect" and clarification_comment:
+            comment_entry = f"Komentarz do wyjaśnienia:\n{clarification_comment}"
+            control.comment = "\n\n".join(filter(None, [control.comment, comment_entry]))
         db.add(control)
         if control.ordered_test_id is not None and control.ordered_test_id in order_map:
             order = order_map[control.ordered_test_id]
             order.label_status = label_status
+            if label_status == "incorrect" and clarification_comment:
+                order.comment = control.comment
             db.add(order)
 
     db.commit()
     return {"updated": len(controls), "label_status": label_status}
+
+
+@app.post("/api/variant-products/finished-product-controls/documents", status_code=status.HTTP_200_OK)
+def save_variant_product_finished_control_documents(
+    payload: VariantProductFinishedProductControlDocumentsRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _ = current_user
+
+    ids = sorted(set(payload.ids))
+    if not ids:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="ids are required",
+        )
+
+    document_names = []
+    for document_name in payload.document_names:
+        value = str(document_name or "").strip()
+        if value and value not in document_names:
+            document_names.append(value)
+
+    controls = (
+        db.query(VariantProductFinishedProductControl)
+        .filter(VariantProductFinishedProductControl.id.in_(ids))
+        .all()
+    )
+    if not controls:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No finished product controls found to save documents",
+        )
+
+    for control in controls:
+        existing_names = parse_linked_document_names(control.linked_document_names)
+        merged_names = existing_names[:]
+        for document_name in document_names:
+            if document_name not in merged_names:
+                merged_names.append(document_name)
+        control.linked_document_names = serialize_linked_document_names(merged_names)
+        db.add(control)
+
+    db.commit()
+    return {
+        "updated_count": len(controls),
+        "document_names": document_names,
+    }
 
 
 @app.post("/api/variant-products/finished-product-controls/relabel")
@@ -3758,6 +3834,7 @@ def relabel_variant_product_finished_product_controls(
             product_project_number=control.product_project_number,
             product_ean_number=control.product_ean_number,
             product_batch_number=control.product_batch_number,
+            sample_location=control.sample_location,
             product_expiry_date=control.product_expiry_date,
             control_date=control.control_date,
             market_label_version=control.market_label_version,
@@ -3799,6 +3876,7 @@ def relabel_variant_product_finished_product_controls(
                 for field in FINISHED_PRODUCT_CONTROL_QUESTION_FIELDS
             },
             comment=control.comment,
+            linked_document_names=control.linked_document_names,
         )
         control.label_status = "relabel_requested"
         db.add(control)

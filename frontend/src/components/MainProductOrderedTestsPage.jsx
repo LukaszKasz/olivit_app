@@ -418,7 +418,7 @@ function MainProductOrderedTestsPage({
                                 className="rounded-2xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
                                 disabled={selectedOrderIds.length === 0}
                             >
-                                Dodaj dokumenty
+                                Dokumenty
                             </button>
                             <button
                                 type="button"
@@ -630,7 +630,7 @@ function MainProductOrderedTestsPage({
                     <div className="w-full max-w-4xl rounded-3xl bg-white shadow-2xl">
                         <div className="border-b border-slate-200 px-6 py-5">
                             <h2 className="text-xl font-semibold text-slate-900">
-                                {isDocumentsPreviewMode ? 'Pokaż dokumenty' : 'Dodaj dokumenty'}
+                                {isDocumentsPreviewMode ? 'Pokaż dokumenty' : 'Dokumenty'}
                             </h2>
                             <p className="mt-1 text-sm text-slate-600">
                                 {isDocumentsPreviewMode

@@ -15,6 +15,7 @@ class VariantProductFinishedProductControlCreate(BaseModel):
     product_project_number: str
     product_ean_number: str
     product_batch_number: str
+    sample_location: str
     product_expiry_date: str
     control_date: str
     market_label_version: str
@@ -96,10 +97,16 @@ class VariantProductFinishedProductControlPlaceholderRequest(BaseModel):
 class VariantProductFinishedProductControlBulkStatusUpdate(BaseModel):
     ids: list[int]
     label_status: str
+    comment: Optional[str] = None
 
 
 class VariantProductFinishedProductControlBulkIds(BaseModel):
     ids: list[int]
+
+
+class VariantProductFinishedProductControlDocumentsRequest(BaseModel):
+    ids: list[int]
+    document_names: list[str]
 
 
 class VariantProductFinishedProductControlResponse(BaseModel):
@@ -122,6 +129,7 @@ class VariantProductFinishedProductControlResponse(BaseModel):
     product_project_number: str
     product_ean_number: str
     product_batch_number: str
+    sample_location: Optional[str] = None
     product_expiry_date: str
     control_date: str
     market_label_version: str
@@ -183,6 +191,8 @@ class VariantProductFinishedProductControlResponse(BaseModel):
     carton_product_verified: Optional[str] = None
     carton_product_verified_note: Optional[str] = None
     comment: Optional[str] = None
+    linked_document_names: list[str] = []
+    batch_linked_document_names: list[str] = []
     created_at: datetime
 
     class Config:

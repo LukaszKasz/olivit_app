@@ -128,6 +128,7 @@ function createInitialForm(order = null) {
         product_project_number: order?.product_project_number || order?.project_number || '',
         product_ean_number: '',
         product_batch_number: '',
+        sample_location: '',
         product_expiry_date: '',
         control_date: order?.control_date || getTodayDateValue(),
         market_label_version: '',
@@ -349,6 +350,7 @@ function VariantProductBatchOrderedTestsPage({
         open: false,
         saving: false,
         existingDocumentNames: [],
+        batchDocumentNames: [],
         files: Array(6).fill(null),
         previewIndex: null,
     });
@@ -362,6 +364,7 @@ function VariantProductBatchOrderedTestsPage({
         open: false,
         saving: false,
         labelStatus: 'incorrect',
+        comment: '',
     });
     const [relatedProductsDialog, setRelatedProductsDialog] = useState({
         open: false,
@@ -547,6 +550,7 @@ function VariantProductBatchOrderedTestsPage({
             'product_project_number',
             'product_ean_number',
             'product_batch_number',
+            'sample_location',
             'product_expiry_date',
             'control_date',
             'market_label_version',
@@ -770,6 +774,7 @@ function VariantProductBatchOrderedTestsPage({
             open: true,
             saving: false,
             labelStatus: 'incorrect',
+            comment: '',
         });
     };
 
@@ -782,6 +787,7 @@ function VariantProductBatchOrderedTestsPage({
             open: false,
             saving: false,
             labelStatus: 'incorrect',
+            comment: '',
         });
     };
 
@@ -976,6 +982,9 @@ function VariantProductBatchOrderedTestsPage({
             await variantProductsAPI.updateFinishedProductControlsStatus({
                 ids: selectedRowIds,
                 label_status: finishedControlMoveDialog.labelStatus,
+                comment: finishedControlMoveDialog.labelStatus === 'incorrect'
+                    ? finishedControlMoveDialog.comment
+                    : '',
             });
             setRows(await loadRows());
             setSelectedRowIds([]);
@@ -1168,10 +1177,18 @@ function VariantProductBatchOrderedTestsPage({
         const existingDocumentNames = Array.from(new Set(
             selectedRows.flatMap((row) => Array.isArray(row.linked_document_names) ? row.linked_document_names : [])
         ));
+        const batchDocumentNames = Array.from(new Set(
+            selectedRows.flatMap((row) => (
+                Array.isArray(row.batch_linked_document_names)
+                    ? row.batch_linked_document_names
+                    : []
+            ))
+        ));
         setDocumentsDialog({
             open: true,
             saving: false,
             existingDocumentNames,
+            batchDocumentNames,
             files: Array(6).fill(null),
             previewIndex: null,
         });
@@ -1188,6 +1205,7 @@ function VariantProductBatchOrderedTestsPage({
             open: false,
             saving: false,
             existingDocumentNames: [],
+            batchDocumentNames: [],
             files: Array(6).fill(null),
             previewIndex: null,
         }));
@@ -1225,12 +1243,19 @@ function VariantProductBatchOrderedTestsPage({
 
         try {
             setDocumentsDialog((current) => ({ ...current, saving: true }));
-            await variantProductsAPI.saveBatchDocuments({
+            const saveDocuments = enableFinishedProductControl
+                ? variantProductsAPI.saveFinishedProductControlDocuments
+                : variantProductsAPI.saveBatchDocuments;
+            await saveDocuments({
                 ids: selectedRowIds,
                 document_names: documentNames,
             });
             setRows(await loadRows());
-            setSuccess(`Dodano ${documentNames.length} nazw dokumentów do zaznaczonych pozycji.`);
+            setSuccess(
+                enableFinishedProductControl
+                    ? `Dodano ${documentNames.length} nazw dokumentów do zaznaczonych kontroli etykiet.`
+                    : `Dodano ${documentNames.length} nazw dokumentów do zaznaczonych pozycji.`
+            );
             setError('');
             closeDocumentsDialog();
         } catch (err) {
@@ -1319,7 +1344,17 @@ function VariantProductBatchOrderedTestsPage({
                             className="rounded-2xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
                             disabled={selectedRowIds.length === 0}
                         >
-                            Dodaj dokumenty
+                            Dokumenty
+                        </button>
+                    )}
+                    {enableFinishedProductControl && (
+                        <button
+                            type="button"
+                            onClick={openDocumentsDialog}
+                            className="rounded-2xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                            disabled={selectedRowIds.length === 0}
+                        >
+                            Dokumenty
                         </button>
                     )}
                     {!enableFinishedProductControl && canBatchManage && (
@@ -1359,6 +1394,7 @@ function VariantProductBatchOrderedTestsPage({
                                 open: true,
                                 saving: false,
                                 labelStatus: 'correct',
+                                comment: '',
                             })}
                             className="rounded-2xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
                             disabled={selectedRowIds.length === 0}
@@ -1373,6 +1409,7 @@ function VariantProductBatchOrderedTestsPage({
                                 open: true,
                                 saving: false,
                                 labelStatus: 'archived',
+                                comment: '',
                             })}
                             className="rounded-2xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
                             disabled={selectedRowIds.length === 0}
@@ -1462,6 +1499,7 @@ function VariantProductBatchOrderedTestsPage({
                                             <th className="px-6 py-4">Nr projektowy</th>
                                             <th className="px-6 py-4">EAN produktu</th>
                                             <th className="px-6 py-4">Seria produktu</th>
+                                            <th className="px-6 py-4">Lokalizacja próbek</th>
                                             <th className="px-6 py-4">Data ważności produktu</th>
                                             <th className="px-6 py-4">Data kontroli</th>
                                             <th className="px-6 py-4">Wersja rynku</th>
@@ -1554,13 +1592,13 @@ function VariantProductBatchOrderedTestsPage({
                         <tbody>
                             {loading ? (
                                 <tr className="border-t border-slate-100">
-                                    <td colSpan={enableFinishedProductControl ? (isCurrentFinishedProductControlView ? 15 : 50) : showClarificationColumn ? 46 : 45} className="px-6 py-10 text-center text-slate-500">
+                                    <td colSpan={enableFinishedProductControl ? (isCurrentFinishedProductControlView ? 15 : 51) : showClarificationColumn ? 46 : 45} className="px-6 py-10 text-center text-slate-500">
                                         {enableFinishedProductControl ? 'Ładowanie kontroli produktu gotowego...' : 'Ładowanie zleconych badań partii...'}
                                     </td>
                                 </tr>
                             ) : filteredRows.length === 0 ? (
                                 <tr className="border-t border-slate-100">
-                                    <td colSpan={enableFinishedProductControl ? (isCurrentFinishedProductControlView ? 15 : 50) : showClarificationColumn ? 46 : 45} className="px-6 py-10 text-center text-slate-500">
+                                    <td colSpan={enableFinishedProductControl ? (isCurrentFinishedProductControlView ? 15 : 51) : showClarificationColumn ? 46 : 45} className="px-6 py-10 text-center text-slate-500">
                                         Brak wyników dla podanego wyszukiwania.
                                     </td>
                                 </tr>
@@ -1628,6 +1666,7 @@ function VariantProductBatchOrderedTestsPage({
                                                         <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.product_project_number || '—'}</td>
                                                         <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.product_ean_number || '—'}</td>
                                                         <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.product_batch_number || '—'}</td>
+                                                        <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.sample_location || '—'}</td>
                                                         <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.product_expiry_date || '—'}</td>
                                                         <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.control_date || '—'}</td>
                                                         <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.market_label_version || '—'}</td>
@@ -1823,6 +1862,24 @@ function VariantProductBatchOrderedTestsPage({
                                 <option value="correct">Poprawne</option>
                             </select>
                         </div>
+                        {finishedControlMoveDialog.labelStatus === 'incorrect' && (
+                            <div className="mb-6">
+                                <label className="block text-xs font-semibold uppercase tracking-[0.18em] text-slate-500" htmlFor="finished-control-move-comment">
+                                    Komentarz do wyjaśnienia
+                                </label>
+                                <textarea
+                                    id="finished-control-move-comment"
+                                    value={finishedControlMoveDialog.comment || ''}
+                                    onChange={(event) => setFinishedControlMoveDialog((current) => ({
+                                        ...current,
+                                        comment: event.target.value,
+                                    }))}
+                                    rows={4}
+                                    placeholder="Dodaj komentarz"
+                                    className="mt-3 w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-500 focus:bg-white"
+                                />
+                            </div>
+                        )}
 
                         <div className="flex justify-end gap-3">
                             <button
@@ -2192,6 +2249,9 @@ function VariantProductBatchOrderedTestsPage({
                             <FormField label="Numer serii produktu" required>
                                 <input type="text" value={dialog.form.product_batch_number} onChange={(event) => updateField('product_batch_number', event.target.value)} className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-500" />
                             </FormField>
+                            <FormField label="Lokalizacja próbek" required>
+                                <input type="text" value={dialog.form.sample_location} onChange={(event) => updateField('sample_location', event.target.value)} className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-500" />
+                            </FormField>
                             <FormField label="Data ważności produktu" required>
                                 <input type="date" value={dialog.form.product_expiry_date} onChange={(event) => updateField('product_expiry_date', event.target.value)} className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-500" />
                             </FormField>
@@ -2349,6 +2409,21 @@ function VariantProductBatchOrderedTestsPage({
                                 <span>Poprawne</span>
                             </label>
                         </div>
+                        {statusDecisionDialog.labelStatus === 'incorrect' && (
+                            <div className="mt-5">
+                                <label className="block text-xs font-semibold uppercase tracking-[0.18em] text-slate-500" htmlFor="finished-control-clarification-comment">
+                                    Komentarz do wyjaśnienia
+                                </label>
+                                <textarea
+                                    id="finished-control-clarification-comment"
+                                    value={dialog.form.comment}
+                                    onChange={(event) => updateField('comment', event.target.value)}
+                                    rows={4}
+                                    placeholder="Dodaj komentarz"
+                                    className="mt-3 w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-500 focus:bg-white"
+                                />
+                            </div>
+                        )}
                         <div className="mt-6 flex justify-end gap-3">
                             <button
                                 type="button"
@@ -2546,17 +2621,25 @@ function VariantProductBatchOrderedTestsPage({
                 <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/40 p-4 md:p-8">
                     <div className="w-full max-w-4xl rounded-3xl bg-white shadow-2xl">
                         <div className="border-b border-slate-200 px-6 py-5">
-                            <h2 className="text-xl font-semibold text-slate-900">Dodaj dokumenty</h2>
+                            <h2 className="text-xl font-semibold text-slate-900">Dokumenty</h2>
                             <p className="mt-1 text-sm text-slate-600">
-                                Dodaj do 6 dokumentów dla zaznaczonych pozycji: {selectedRowIds.length}
+                                {enableFinishedProductControl
+                                    ? `Dodaj do 6 dokumentów dla zaznaczonych kontroli etykiet: ${selectedRowIds.length}`
+                                    : `Dodaj do 6 dokumentów dla zaznaczonych pozycji: ${selectedRowIds.length}`}
                             </p>
                         </div>
                         <div className="grid gap-4 px-6 py-6">
                             <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
-                                <div className="text-sm font-semibold text-slate-900">Zapisane nazwy dokumentów</div>
+                                <div className="text-sm font-semibold text-slate-900">
+                                    {enableFinishedProductControl
+                                        ? 'Dokumenty kontroli produktu gotowego'
+                                        : 'Zapisane nazwy dokumentów'}
+                                </div>
                                 {documentsDialog.existingDocumentNames.length === 0 ? (
                                     <div className="mt-2 text-sm text-slate-500">
-                                        Brak zapisanych nazw dokumentów dla zaznaczonych badań.
+                                        {enableFinishedProductControl
+                                            ? 'Brak zapisanych nazw dokumentów dla zaznaczonych kontroli etykiet.'
+                                            : 'Brak zapisanych nazw dokumentów dla zaznaczonych badań.'}
                                     </div>
                                 ) : (
                                     <div className="mt-2 flex flex-wrap gap-2">
@@ -2568,6 +2651,29 @@ function VariantProductBatchOrderedTestsPage({
                                     </div>
                                 )}
                             </div>
+                            {enableFinishedProductControl && (
+                                <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-4">
+                                    <div className="text-sm font-semibold text-slate-900">
+                                        Dokumenty z Produkty spakowane / Warianty
+                                    </div>
+                                    <div className="mt-1 text-xs text-slate-500">
+                                        Osobny zestaw dokumentów z powiązanych badań — tylko do podglądu.
+                                    </div>
+                                    {documentsDialog.batchDocumentNames.length === 0 ? (
+                                        <div className="mt-2 text-sm text-slate-500">
+                                            Brak dokumentów zapisanych przy powiązanych badaniach.
+                                        </div>
+                                    ) : (
+                                        <div className="mt-3 flex flex-wrap gap-2">
+                                            {documentsDialog.batchDocumentNames.map((documentName) => (
+                                                <span key={documentName} className="rounded-full border border-sky-300 bg-white px-3 py-1 text-sm text-slate-700">
+                                                    {documentName}
+                                                </span>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                             {documentsDialog.files.map((file, index) => {
                                 const inputId = `batch-document-${index + 1}`;
 

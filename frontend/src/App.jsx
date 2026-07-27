@@ -126,7 +126,7 @@ function App() {
                         path="/product-variants/finished-product-control/all"
                         element={
                             <VariantProductBatchOrderedTestsPage
-                                title="Produkty spakowane / Warianty - Kontrola produktu gotowego - Wszystkie"
+                                title="Kontrola produktu gotowego - Wszystkie"
                                 description="Widok prezentuje wszystkie wpisy kontroli produktu gotowego ze wszystkich statusów."
                                 enableFinishedProductControl
                                 finishedProductControlFilter="all"
@@ -138,7 +138,7 @@ function App() {
                         path="/product-variants/finished-product-control"
                         element={
                             <VariantProductBatchOrderedTestsPage
-                                title="Produkty spakowane / Warianty - Kontrola produktu gotowego - Bieżące"
+                                title="Kontrola produktu gotowego - Bieżące"
                                 description="Bieżąca lista zapisanych kontroli produktu gotowego."
                                 enableFinishedProductControl
                                 finishedProductControlFilter="current"
@@ -149,7 +149,7 @@ function App() {
                         path="/product-variants/finished-product-control/incorrect"
                         element={
                             <VariantProductBatchOrderedTestsPage
-                                title="Produkty spakowane / Warianty - Kontrola produktu gotowego - Do wyjaśnienia"
+                                title="Kontrola produktu gotowego - Do wyjaśnienia"
                                 description="Widok kontroli produktu gotowego z wykrytymi niezgodnościami."
                                 enableFinishedProductControl
                                 finishedProductControlFilter="incorrect"
@@ -161,7 +161,7 @@ function App() {
                         path="/product-variants/finished-product-control/archive"
                         element={
                             <VariantProductBatchOrderedTestsPage
-                                title="Produkty spakowane / Warianty - Kontrola produktu gotowego - Archiwum"
+                                title="Kontrola produktu gotowego - Archiwum"
                                 description="Archiwalna lista kontroli produktu gotowego."
                                 enableFinishedProductControl
                                 finishedProductControlFilter="archived"
@@ -173,7 +173,7 @@ function App() {
                         path="/product-variants/finished-product-control/correct"
                         element={
                             <VariantProductBatchOrderedTestsPage
-                                title="Produkty spakowane / Warianty - Kontrola produktu gotowego - Poprawne"
+                                title="Kontrola produktu gotowego - Poprawne"
                                 description="Widok kontroli produktu gotowego bez wykrytych niezgodności."
                                 enableFinishedProductControl
                                 finishedProductControlFilter="correct"

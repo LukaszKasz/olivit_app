@@ -235,6 +235,10 @@ export const variantProductsAPI = {
         const response = await api.patch('/api/variant-products/finished-product-controls/status', payload);
         return response.data;
     },
+    saveFinishedProductControlDocuments: async (payload) => {
+        const response = await api.post('/api/variant-products/finished-product-controls/documents', payload);
+        return response.data;
+    },
     relabelFinishedProductControls: async (ids) => {
         const response = await api.post('/api/variant-products/finished-product-controls/relabel', { ids });
         return response.data;

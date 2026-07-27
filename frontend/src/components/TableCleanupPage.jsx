@@ -25,10 +25,10 @@ const TABLE_USAGE = {
         'Produkty spakowane / Warianty - Archiwum',
     ],
     variant_product_finished_product_controls: [
-        'Produkty spakowane / Warianty - Kontrola produktu gotowego - Bieżące',
-        'Produkty spakowane / Warianty - Kontrola produktu gotowego - Do wyjaśnienia',
-        'Produkty spakowane / Warianty - Kontrola produktu gotowego - Archiwum',
-        'Produkty spakowane / Warianty - Kontrola produktu gotowego - Poprawne',
+        'Kontrola produktu gotowego - Bieżące',
+        'Kontrola produktu gotowego - Do wyjaśnienia',
+        'Kontrola produktu gotowego - Archiwum',
+        'Kontrola produktu gotowego - Poprawne',
     ],
     product_detailed_parameters: ['BRD', 'CoA'],
 };

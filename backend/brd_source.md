@@ -372,7 +372,7 @@ Przebieg:
 3. Backend generuje PDF CoA.
 4. PDF jest pobierany do pliku.
 
-### Akcja: Dodaj dokumenty
+### Akcja: Dokumenty
 
 Aktualny stan:
 

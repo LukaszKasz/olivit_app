@@ -224,6 +224,7 @@ class VariantProductFinishedProductControl(Base):
     product_project_number = Column(String(100), nullable=False)
     product_ean_number = Column(String(255), nullable=False)
     product_batch_number = Column(String(255), nullable=False)
+    sample_location = Column(String(255), nullable=True)
     product_expiry_date = Column(String(50), nullable=False)
     control_date = Column(String(50), nullable=False)
     market_label_version = Column(String(255), nullable=False)
@@ -285,6 +286,7 @@ class VariantProductFinishedProductControl(Base):
     carton_product_verified = Column(String(10), nullable=True)
     carton_product_verified_note = Column(String(2000), nullable=True)
     comment = Column(String(2000), nullable=True)
+    linked_document_names = Column(String(4000), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
 
 
