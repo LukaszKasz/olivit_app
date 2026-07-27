@@ -395,6 +395,41 @@ def serialize_variant_related_label_control_row(row: VariantProductFinishedProdu
     }
 
 
+FINISHED_PRODUCT_CONTROL_QUESTION_FIELDS = (
+    "active_substances_match_pds",
+    "label_version_matches_used_version",
+    "has_printing_errors",
+    "has_graphic_design_errors",
+    "print_correctness",
+    "has_labeling_errors",
+    "cap_is_correct",
+    "induction_seal_weld_correct",
+    "induction_seal_opening_correct",
+    "package_is_dirty",
+    "package_is_damaged",
+    "qr_code_is_active",
+    "package_contents_match_card",
+    "product_verified",
+)
+
+FINISHED_PRODUCT_CONTROL_QUESTION_COLUMN_TYPES = {
+    "active_substances_match_pds": "VARCHAR(50)",
+    "label_version_matches_used_version": "VARCHAR(10)",
+    "has_printing_errors": "VARCHAR(10)",
+    "has_graphic_design_errors": "VARCHAR(10)",
+    "print_correctness": "VARCHAR(10)",
+    "has_labeling_errors": "VARCHAR(10)",
+    "cap_is_correct": "VARCHAR(20)",
+    "induction_seal_weld_correct": "VARCHAR(20)",
+    "induction_seal_opening_correct": "VARCHAR(20)",
+    "package_is_dirty": "VARCHAR(10)",
+    "package_is_damaged": "VARCHAR(10)",
+    "qr_code_is_active": "VARCHAR(20)",
+    "package_contents_match_card": "VARCHAR(10)",
+    "product_verified": "VARCHAR(10)",
+}
+
+
 def serialize_variant_finished_product_control_row(
     row: VariantProductFinishedProductControl,
     *,
@@ -453,6 +488,15 @@ def serialize_variant_finished_product_control_row(
         "package_contents_match_card_note": row.package_contents_match_card_note,
         "product_verified": row.product_verified,
         "product_verified_note": row.product_verified_note,
+        "carton_market_label_version": row.carton_market_label_version,
+        **{
+            f"carton_{field}": getattr(row, f"carton_{field}")
+            for field in FINISHED_PRODUCT_CONTROL_QUESTION_FIELDS
+        },
+        **{
+            f"carton_{field}_note": getattr(row, f"carton_{field}_note")
+            for field in FINISHED_PRODUCT_CONTROL_QUESTION_FIELDS
+        },
         "comment": row.comment,
         "created_at": row.created_at,
     }
@@ -475,6 +519,23 @@ def derive_variant_label_status(control: VariantProductFinishedProductControl) -
         control.package_contents_match_card != "Tak",
         control.product_verified != "Tak",
     ]
+    if control.printed_material_type == "Etykieta+opakowanie":
+        issue_flags.extend([
+            control.carton_active_substances_match_pds not in {"Tak", "Nie dotyczy"},
+            control.carton_label_version_matches_used_version != "Tak",
+            control.carton_has_printing_errors != "Nie",
+            control.carton_has_graphic_design_errors != "Nie",
+            control.carton_print_correctness != "Tak",
+            control.carton_has_labeling_errors != "Nie",
+            control.carton_cap_is_correct not in {"Tak", "Nie dotyczy"},
+            control.carton_induction_seal_weld_correct not in {"Tak", "Nie dotyczy"},
+            control.carton_induction_seal_opening_correct not in {"Tak", "Nie dotyczy"},
+            control.carton_package_is_dirty != "Nie",
+            control.carton_package_is_damaged != "Nie",
+            control.carton_qr_code_is_active not in {"Tak", "Nie dotyczy"},
+            control.carton_package_contents_match_card != "Tak",
+            control.carton_product_verified != "Tak",
+        ])
     return "incorrect" if any(issue_flags) else "correct"
 
 
@@ -1714,7 +1775,16 @@ def ensure_variant_product_finished_product_controls_schema() -> None:
         "qr_code_is_active_note": "VARCHAR(2000)",
         "package_contents_match_card_note": "VARCHAR(2000)",
         "product_verified_note": "VARCHAR(2000)",
+        "carton_market_label_version": "VARCHAR(255)",
     }
+    extra_columns.update({
+        f"carton_{field}": column_type
+        for field, column_type in FINISHED_PRODUCT_CONTROL_QUESTION_COLUMN_TYPES.items()
+    })
+    extra_columns.update({
+        f"carton_{field}_note": "VARCHAR(2000)"
+        for field in FINISHED_PRODUCT_CONTROL_QUESTION_FIELDS
+    })
 
     for column_name, column_type in extra_columns.items():
         if column_name not in columns:
@@ -3399,6 +3469,10 @@ def create_variant_product_finished_product_control(
         "package_contents_match_card_note": (payload.package_contents_match_card_note or "").strip(),
         "product_verified_note": (payload.product_verified_note or "").strip(),
     }
+    carton_note_inputs = {
+        f"carton_{field}_note": (getattr(payload, f"carton_{field}_note") or "").strip()
+        for field in FINISHED_PRODUCT_CONTROL_QUESTION_FIELDS
+    }
 
     fields = {
         "sku": payload.sku.strip(),
@@ -3427,11 +3501,24 @@ def create_variant_product_finished_product_control(
         "package_contents_match_card": payload.package_contents_match_card.strip(),
         "product_verified": payload.product_verified.strip(),
     }
+    includes_carton = fields["printed_material_type"] == "Etykieta+opakowanie"
+    carton_fields = {
+        "carton_market_label_version": (payload.carton_market_label_version or "").strip(),
+        **{
+            f"carton_{field}": (getattr(payload, f"carton_{field}") or "").strip()
+            for field in FINISHED_PRODUCT_CONTROL_QUESTION_FIELDS
+        },
+    }
 
     if any(not value for value in fields.values()):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="All required finished product control fields must be filled in",
+        )
+    if includes_carton and any(not value for value in carton_fields.values()):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="All carton control fields must be filled in",
         )
 
     note_requirements = {
@@ -3456,6 +3543,17 @@ def create_variant_product_finished_product_control(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="All negative answers must include notes",
             )
+        carton_answer_field = f"carton_{answer_field}"
+        carton_note_field = f"carton_{note_field}"
+        if (
+            includes_carton
+            and carton_fields[carton_answer_field] == "Nie"
+            and not carton_note_inputs[carton_note_field]
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="All negative carton answers must include notes",
+            )
 
     question_labels = {
         "active_substances_match_pds_note": "Czy zawartość substancji aktywnych na etykiecie jest zgodna ze specyfikacją analityczną w PDS?",
@@ -3476,9 +3574,17 @@ def create_variant_product_finished_product_control(
     aggregated_comment_parts = []
     for note_field, note_value in note_inputs.items():
         if note_value:
+            section_prefix = "Etykieta\n" if includes_carton else ""
             aggregated_comment_parts.append(
-                f"Pytanie: {question_labels[note_field]}\nUwagi: {note_value}"
+                f"{section_prefix}Pytanie: {question_labels[note_field]}\nUwagi: {note_value}"
             )
+    if includes_carton:
+        for carton_note_field, note_value in carton_note_inputs.items():
+            if note_value:
+                note_field = carton_note_field.removeprefix("carton_")
+                aggregated_comment_parts.append(
+                    f"Kartonik / opakowanie\nPytanie: {question_labels[note_field]}\nUwagi: {note_value}"
+                )
 
     extra_comment = (payload.comment or "").strip()
     if extra_comment:
@@ -3530,8 +3636,12 @@ def create_variant_product_finished_product_control(
         }
     for key, value in persisted_fields.items():
         setattr(control, key, value)
-    for note_field in note_inputs:
-        setattr(control, note_field, None)
+    for note_field, note_value in note_inputs.items():
+        setattr(control, note_field, note_value or None)
+    for key, value in carton_fields.items():
+        setattr(control, key, value if includes_carton else None)
+    for note_field, note_value in carton_note_inputs.items():
+        setattr(control, note_field, note_value if includes_carton and note_value else None)
     control.ordered_test_id = order.id if order else payload.ordered_test_id
     control.laboratory_name = order.laboratory_name if order else control.laboratory_name
     control.asana_task_number = order.asana_task_number if order else control.asana_task_number
@@ -3679,6 +3789,15 @@ def relabel_variant_product_finished_product_controls(
             package_contents_match_card_note=control.package_contents_match_card_note,
             product_verified=control.product_verified,
             product_verified_note=control.product_verified_note,
+            carton_market_label_version=control.carton_market_label_version,
+            **{
+                f"carton_{field}": getattr(control, f"carton_{field}")
+                for field in FINISHED_PRODUCT_CONTROL_QUESTION_FIELDS
+            },
+            **{
+                f"carton_{field}_note": getattr(control, f"carton_{field}_note")
+                for field in FINISHED_PRODUCT_CONTROL_QUESTION_FIELDS
+            },
             comment=control.comment,
         )
         control.label_status = "relabel_requested"

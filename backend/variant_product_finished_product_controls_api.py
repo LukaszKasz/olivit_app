@@ -46,6 +46,35 @@ class VariantProductFinishedProductControlCreate(BaseModel):
     package_contents_match_card_note: Optional[str] = None
     product_verified: str
     product_verified_note: Optional[str] = None
+    carton_market_label_version: Optional[str] = None
+    carton_active_substances_match_pds: Optional[str] = None
+    carton_active_substances_match_pds_note: Optional[str] = None
+    carton_label_version_matches_used_version: Optional[str] = None
+    carton_label_version_matches_used_version_note: Optional[str] = None
+    carton_has_printing_errors: Optional[str] = None
+    carton_has_printing_errors_note: Optional[str] = None
+    carton_has_graphic_design_errors: Optional[str] = None
+    carton_has_graphic_design_errors_note: Optional[str] = None
+    carton_print_correctness: Optional[str] = None
+    carton_print_correctness_note: Optional[str] = None
+    carton_has_labeling_errors: Optional[str] = None
+    carton_has_labeling_errors_note: Optional[str] = None
+    carton_cap_is_correct: Optional[str] = None
+    carton_cap_is_correct_note: Optional[str] = None
+    carton_induction_seal_weld_correct: Optional[str] = None
+    carton_induction_seal_weld_correct_note: Optional[str] = None
+    carton_induction_seal_opening_correct: Optional[str] = None
+    carton_induction_seal_opening_correct_note: Optional[str] = None
+    carton_package_is_dirty: Optional[str] = None
+    carton_package_is_dirty_note: Optional[str] = None
+    carton_package_is_damaged: Optional[str] = None
+    carton_package_is_damaged_note: Optional[str] = None
+    carton_qr_code_is_active: Optional[str] = None
+    carton_qr_code_is_active_note: Optional[str] = None
+    carton_package_contents_match_card: Optional[str] = None
+    carton_package_contents_match_card_note: Optional[str] = None
+    carton_product_verified: Optional[str] = None
+    carton_product_verified_note: Optional[str] = None
     comment: Optional[str] = None
 
 
@@ -124,6 +153,35 @@ class VariantProductFinishedProductControlResponse(BaseModel):
     package_contents_match_card_note: Optional[str] = None
     product_verified: str
     product_verified_note: Optional[str] = None
+    carton_market_label_version: Optional[str] = None
+    carton_active_substances_match_pds: Optional[str] = None
+    carton_active_substances_match_pds_note: Optional[str] = None
+    carton_label_version_matches_used_version: Optional[str] = None
+    carton_label_version_matches_used_version_note: Optional[str] = None
+    carton_has_printing_errors: Optional[str] = None
+    carton_has_printing_errors_note: Optional[str] = None
+    carton_has_graphic_design_errors: Optional[str] = None
+    carton_has_graphic_design_errors_note: Optional[str] = None
+    carton_print_correctness: Optional[str] = None
+    carton_print_correctness_note: Optional[str] = None
+    carton_has_labeling_errors: Optional[str] = None
+    carton_has_labeling_errors_note: Optional[str] = None
+    carton_cap_is_correct: Optional[str] = None
+    carton_cap_is_correct_note: Optional[str] = None
+    carton_induction_seal_weld_correct: Optional[str] = None
+    carton_induction_seal_weld_correct_note: Optional[str] = None
+    carton_induction_seal_opening_correct: Optional[str] = None
+    carton_induction_seal_opening_correct_note: Optional[str] = None
+    carton_package_is_dirty: Optional[str] = None
+    carton_package_is_dirty_note: Optional[str] = None
+    carton_package_is_damaged: Optional[str] = None
+    carton_package_is_damaged_note: Optional[str] = None
+    carton_qr_code_is_active: Optional[str] = None
+    carton_qr_code_is_active_note: Optional[str] = None
+    carton_package_contents_match_card: Optional[str] = None
+    carton_package_contents_match_card_note: Optional[str] = None
+    carton_product_verified: Optional[str] = None
+    carton_product_verified_note: Optional[str] = None
     comment: Optional[str] = None
     created_at: datetime
 

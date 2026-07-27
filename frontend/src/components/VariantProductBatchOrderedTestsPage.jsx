@@ -159,6 +159,11 @@ function createInitialForm(order = null) {
         package_contents_match_card_note: '',
         product_verified: '',
         product_verified_note: '',
+        carton_market_label_version: '',
+        ...Object.fromEntries(CONTROL_QUESTION_FIELDS.flatMap(({ field, noteField }) => [
+            [`carton_${field}`, ''],
+            [`carton_${noteField}`, ''],
+        ])),
         comment: '',
     };
 }
@@ -250,7 +255,7 @@ function createRetestForm(row = null) {
 }
 
 function hasFinishedProductControlIssues(row) {
-    return [
+    const issueFlags = [
         !isAffirmative(row.active_substances_match_pds),
         row.label_version_matches_used_version !== 'Tak',
         row.has_printing_errors !== 'Nie',
@@ -265,7 +270,28 @@ function hasFinishedProductControlIssues(row) {
         !isAffirmative(row.qr_code_is_active),
         row.package_contents_match_card !== 'Tak',
         row.product_verified !== 'Tak',
-    ].some(Boolean);
+    ];
+
+    if (row.printed_material_type === 'Etykieta+opakowanie') {
+        issueFlags.push(
+            !isAffirmative(row.carton_active_substances_match_pds),
+            row.carton_label_version_matches_used_version !== 'Tak',
+            row.carton_has_printing_errors !== 'Nie',
+            row.carton_has_graphic_design_errors !== 'Nie',
+            row.carton_print_correctness !== 'Tak',
+            row.carton_has_labeling_errors !== 'Nie',
+            !isAffirmative(row.carton_cap_is_correct),
+            !isAffirmative(row.carton_induction_seal_weld_correct),
+            !isAffirmative(row.carton_induction_seal_opening_correct),
+            row.carton_package_is_dirty !== 'Nie',
+            row.carton_package_is_damaged !== 'Nie',
+            !isAffirmative(row.carton_qr_code_is_active),
+            row.carton_package_contents_match_card !== 'Tak',
+            row.carton_product_verified !== 'Tak',
+        );
+    }
+
+    return issueFlags.some(Boolean);
 }
 
 function VariantProductBatchOrderedTestsPage({
@@ -531,8 +557,27 @@ function VariantProductBatchOrderedTestsPage({
             return false;
         }
 
-        return CONTROL_QUESTION_FIELDS.every(({ field, noteField }) => (
+        const primaryFieldsValid = CONTROL_QUESTION_FIELDS.every(({ field, noteField }) => (
             dialog.form[field] !== 'Nie' || String(dialog.form[noteField] || '').trim()
+        ));
+        if (!primaryFieldsValid) {
+            return false;
+        }
+
+        if (dialog.form.printed_material_type !== 'Etykieta+opakowanie') {
+            return true;
+        }
+
+        if (!String(dialog.form.carton_market_label_version || '').trim()) {
+            return false;
+        }
+
+        return CONTROL_QUESTION_FIELDS.every(({ field, noteField }) => (
+            String(dialog.form[`carton_${field}`] || '').trim()
+            && (
+                dialog.form[`carton_${field}`] !== 'Nie'
+                || String(dialog.form[`carton_${noteField}`] || '').trim()
+            )
         ));
     };
 
@@ -1397,10 +1442,6 @@ function VariantProductBatchOrderedTestsPage({
                                         />
                                     </th>
                                     <th className="px-6 py-4">Status etykiety</th>
-                                    <th className="px-6 py-4">ID badania</th>
-                                    <th className="px-6 py-4">ID badania pierwotnego</th>
-                                    <th className="px-6 py-4">ID kontroli etykiet</th>
-                                    <th className="px-6 py-4">ID kontroli etykiet pierwotnego</th>
                                     <th className="px-6 py-4">Numer projektu</th>
                                     <th className="px-6 py-4">Numer wariantu</th>
                                     <th className="w-[22rem] min-w-[22rem] px-6 py-4">Nazwa</th>
@@ -1440,8 +1481,18 @@ function VariantProductBatchOrderedTestsPage({
                                             <th className="px-6 py-4">Zweryfikowano</th>
                                             <th className="px-6 py-4">Komentarz</th>
                                             <th className="px-6 py-4">Data utworzenia</th>
+                                            <th className="px-6 py-4">Kartonik: wersja rynku</th>
+                                            {CONTROL_QUESTION_FIELDS.map(({ field, label }) => (
+                                                <th key={`carton-heading-${field}`} className="px-6 py-4">
+                                                    Kartonik: {label}
+                                                </th>
+                                            ))}
                                         </>
                                     )}
+                                    <th className="px-6 py-4">ID badania</th>
+                                    <th className="px-6 py-4">ID badania pierwotnego</th>
+                                    <th className="px-6 py-4">ID kontroli etykiet</th>
+                                    <th className="px-6 py-4">ID kontroli etykiet pierwotnego</th>
                                 </tr>
                             ) : (
                                 <tr>
@@ -1453,10 +1504,8 @@ function VariantProductBatchOrderedTestsPage({
                                             aria-label="Zaznacz wszystkie widoczne wiersze"
                                         />
                                     </th>
-                                    <th className="px-6 py-4">ID badania</th>
-                                    <th className="px-6 py-4">Informacja o zwolnieniu</th>
-                                    <th className="px-6 py-4">ID badania pierwotnego</th>
-                                    <th className="px-6 py-4">ID kontroli etykiety</th>
+                                    <th className="px-6 py-4">Status badań</th>
+                                    <th className="px-6 py-4">Status etykiet</th>
                                     <th className="px-6 py-4">Numer projektu</th>
                                     <th className="px-6 py-4">Numer wariantu</th>
                                     <th className="w-[22rem] min-w-[22rem] px-6 py-4">Nazwa</th>
@@ -1465,8 +1514,6 @@ function VariantProductBatchOrderedTestsPage({
                                     <th className="px-6 py-4">Numer PO</th>
                                     <th className="px-6 py-4">Koszt badania</th>
                                     <th className="px-6 py-4">Numer serii</th>
-                                    <th className="px-6 py-4">Status badań</th>
-                                    <th className="px-6 py-4">Status etykiet</th>
                                     <th className="px-6 py-4">Data produkcji</th>
                                     <th className="px-6 py-4">Data ważności</th>
                                     <th className="px-6 py-4">Plan. realizacji</th>
@@ -1497,19 +1544,23 @@ function VariantProductBatchOrderedTestsPage({
                                     <th className="px-6 py-4">Zweryfikowano</th>
                                     <th className="px-6 py-4">Komentarz</th>
                                     {showClarificationColumn && <th className="px-6 py-4">Notatka</th>}
+                                    <th className="px-6 py-4">ID badania</th>
+                                    <th className="px-6 py-4">Informacja o zwolnieniu</th>
+                                    <th className="px-6 py-4">ID badania pierwotnego</th>
+                                    <th className="px-6 py-4">ID kontroli etykiety</th>
                                 </tr>
                             )}
                         </thead>
                         <tbody>
                             {loading ? (
                                 <tr className="border-t border-slate-100">
-                                    <td colSpan={enableFinishedProductControl ? (isCurrentFinishedProductControlView ? 15 : 35) : showClarificationColumn ? 46 : 45} className="px-6 py-10 text-center text-slate-500">
+                                    <td colSpan={enableFinishedProductControl ? (isCurrentFinishedProductControlView ? 15 : 50) : showClarificationColumn ? 46 : 45} className="px-6 py-10 text-center text-slate-500">
                                         {enableFinishedProductControl ? 'Ładowanie kontroli produktu gotowego...' : 'Ładowanie zleconych badań partii...'}
                                     </td>
                                 </tr>
                             ) : filteredRows.length === 0 ? (
                                 <tr className="border-t border-slate-100">
-                                    <td colSpan={enableFinishedProductControl ? (isCurrentFinishedProductControlView ? 15 : 35) : showClarificationColumn ? 46 : 45} className="px-6 py-10 text-center text-slate-500">
+                                    <td colSpan={enableFinishedProductControl ? (isCurrentFinishedProductControlView ? 15 : 50) : showClarificationColumn ? 46 : 45} className="px-6 py-10 text-center text-slate-500">
                                         Brak wyników dla podanego wyszukiwania.
                                     </td>
                                 </tr>
@@ -1518,7 +1569,9 @@ function VariantProductBatchOrderedTestsPage({
                                     <tr
                                         key={row.id}
                                         className="border-t border-slate-100 hover:bg-slate-50/80"
-                                        onContextMenu={(event) => handleContextMenu(event, row)}
+                                        onContextMenu={isCurrentFinishedProductControlView
+                                            ? undefined
+                                            : (event) => handleContextMenu(event, row)}
                                     >
                                         <td className="px-6 py-4">
                                             <input
@@ -1536,28 +1589,19 @@ function VariantProductBatchOrderedTestsPage({
                                                 </span>
                                             </td>
                                         )}
-                                        <td className="whitespace-nowrap px-6 py-4 text-slate-700">
-                                            {row.test_order_id ?? '—'}
-                                        </td>
                                         {!enableFinishedProductControl && (
-                                            <td className="whitespace-nowrap px-6 py-4 text-slate-700">
-                                                {(row.related_label_controls_count || 0) > 0 ? (
-                                                    `${row.related_label_controls_count || 0}/${row.related_label_controls_resolved_count || 0}`
-                                                ) : (
-                                                    '—'
-                                                )}
-                                            </td>
-                                        )}
-                                        <td className="whitespace-nowrap px-6 py-4 text-slate-700">
-                                            {row.original_test_order_id ?? '—'}
-                                        </td>
-                                        <td className="whitespace-nowrap px-6 py-4 text-slate-700">
-                                            {row.label_control_id ?? '—'}
-                                        </td>
-                                        {enableFinishedProductControl && (
-                                            <td className="whitespace-nowrap px-6 py-4 text-slate-700">
-                                                {row.original_label_control_id ?? '—'}
-                                            </td>
+                                            <>
+                                                <td className="px-6 py-4 text-slate-700">
+                                                    <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${(TEST_STATUS_META[row.workflow_status || 'ordered_tests'] || TEST_STATUS_META.ordered_tests).className}`}>
+                                                        {(TEST_STATUS_META[row.workflow_status || 'ordered_tests'] || TEST_STATUS_META.ordered_tests).label}
+                                                    </span>
+                                                </td>
+                                                <td className="px-6 py-4 text-slate-700">
+                                                    <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${(LABEL_STATUS_META[row.label_status || 'current'] || LABEL_STATUS_META.current).className}`}>
+                                                        {(LABEL_STATUS_META[row.label_status || 'current'] || LABEL_STATUS_META.current).label}
+                                                    </span>
+                                                </td>
+                                            </>
                                         )}
                                         <td className="whitespace-nowrap px-6 py-4 text-slate-700">
                                             {row.project_number || '—'}
@@ -1603,8 +1647,18 @@ function VariantProductBatchOrderedTestsPage({
                                                         <td className="whitespace-nowrap px-6 py-4 text-slate-700">{renderFinishedControlValue(row.product_verified, highlightNegativeFinishedControlValues)}</td>
                                                         <td className="px-6 py-4 text-slate-700">{row.comment || '—'}</td>
                                                         <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.created_at ? new Date(row.created_at).toLocaleString('pl-PL') : '—'}</td>
+                                                        <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.carton_market_label_version || '—'}</td>
+                                                        {CONTROL_QUESTION_FIELDS.map(({ field }) => (
+                                                            <td key={`carton-value-${row.id}-${field}`} className="whitespace-nowrap px-6 py-4 text-slate-700">
+                                                                {renderFinishedControlValue(row[`carton_${field}`], highlightNegativeFinishedControlValues)}
+                                                            </td>
+                                                        ))}
                                                     </>
                                                 )}
+                                                <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.test_order_id ?? '—'}</td>
+                                                <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.original_test_order_id ?? '—'}</td>
+                                                <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.label_control_id ?? '—'}</td>
+                                                <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.original_label_control_id ?? '—'}</td>
                                             </>
                                         ) : (
                                             <>
@@ -1614,16 +1668,6 @@ function VariantProductBatchOrderedTestsPage({
                                                 <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.po_number || '—'}</td>
                                                 <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.test_cost || '—'}</td>
                                                 <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.batch_number}</td>
-                                                <td className="px-6 py-4 text-slate-700">
-                                                    <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${(TEST_STATUS_META[row.workflow_status || 'ordered_tests'] || TEST_STATUS_META.ordered_tests).className}`}>
-                                                        {(TEST_STATUS_META[row.workflow_status || 'ordered_tests'] || TEST_STATUS_META.ordered_tests).label}
-                                                    </span>
-                                                </td>
-                                                <td className="px-6 py-4 text-slate-700">
-                                                    <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${(LABEL_STATUS_META[row.label_status || 'current'] || LABEL_STATUS_META.current).className}`}>
-                                                        {(LABEL_STATUS_META[row.label_status || 'current'] || LABEL_STATUS_META.current).label}
-                                                    </span>
-                                                </td>
                                                 <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.production_date || '—'}</td>
                                                 <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.expiry_date || '—'}</td>
                                                 <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.planned_test_date || '—'}</td>
@@ -1654,6 +1698,14 @@ function VariantProductBatchOrderedTestsPage({
                                                 <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.product_verified || '—'}</td>
                                                 <td className="px-6 py-4 text-slate-700">{row.comment || '—'}</td>
                                                 {showClarificationColumn && <td className="px-6 py-4 text-slate-700">{row.clarification_note || '—'}</td>}
+                                                <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.test_order_id ?? '—'}</td>
+                                                <td className="whitespace-nowrap px-6 py-4 text-slate-700">
+                                                    {(row.related_label_controls_count || 0) > 0
+                                                        ? `${row.related_label_controls_count || 0}/${row.related_label_controls_resolved_count || 0}`
+                                                        : '—'}
+                                                </td>
+                                                <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.original_test_order_id ?? '—'}</td>
+                                                <td className="whitespace-nowrap px-6 py-4 text-slate-700">{row.label_control_id ?? '—'}</td>
                                             </>
                                         )}
                                     </tr>
@@ -2143,7 +2195,21 @@ function VariantProductBatchOrderedTestsPage({
                             <FormField label="Data ważności produktu" required>
                                 <input type="date" value={dialog.form.product_expiry_date} onChange={(event) => updateField('product_expiry_date', event.target.value)} className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-500" />
                             </FormField>
-                            <FormField label="Numer wersji etykiety / kartonika obecny na rynku" required>
+                            <div className="mt-2 rounded-2xl bg-slate-900 px-5 py-4 text-base font-semibold text-white">
+                                {dialog.form.printed_material_type === 'Etykieta+opakowanie'
+                                    ? 'Ocena 1: Etykieta'
+                                    : dialog.form.printed_material_type === 'Kartonik'
+                                        ? 'Ocena kartonika'
+                                        : 'Ocena materiału'}
+                            </div>
+                            <FormField
+                                label={dialog.form.printed_material_type === 'Etykieta+opakowanie'
+                                    ? 'Numer wersji etykiety obecny na rynku'
+                                    : dialog.form.printed_material_type === 'Kartonik'
+                                        ? 'Numer wersji kartonika obecny na rynku'
+                                        : 'Numer wersji etykiety / kartonika obecny na rynku'}
+                                required
+                            >
                                 <input type="text" value={dialog.form.market_label_version} onChange={(event) => updateField('market_label_version', event.target.value)} className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-500" />
                             </FormField>
                             {CONTROL_QUESTION_FIELDS.map(({ field, noteField, label, options }) => (
@@ -2175,6 +2241,54 @@ function VariantProductBatchOrderedTestsPage({
                                     </div>
                                 </FormField>
                             ))}
+                            {dialog.form.printed_material_type === 'Etykieta+opakowanie' && (
+                                <>
+                                    <div className="mt-4 rounded-2xl bg-slate-900 px-5 py-4 text-base font-semibold text-white">
+                                        Ocena 2: Kartonik / opakowanie
+                                    </div>
+                                    <FormField label="Numer wersji kartonika / opakowania obecny na rynku" required>
+                                        <input
+                                            type="text"
+                                            value={dialog.form.carton_market_label_version}
+                                            onChange={(event) => updateField('carton_market_label_version', event.target.value)}
+                                            className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-500"
+                                        />
+                                    </FormField>
+                                    {CONTROL_QUESTION_FIELDS.map(({ field, noteField, label, options }) => {
+                                        const cartonField = `carton_${field}`;
+                                        const cartonNoteField = `carton_${noteField}`;
+                                        return (
+                                            <FormField key={cartonField} label={label} required>
+                                                <div className="space-y-3">
+                                                    <div className="flex flex-wrap gap-3 rounded-2xl border border-slate-300 bg-white px-4 py-3">
+                                                        {options.map((option) => (
+                                                            <label key={option} className="inline-flex cursor-pointer items-center gap-2 text-sm text-slate-900">
+                                                                <input
+                                                                    type="radio"
+                                                                    value={option}
+                                                                    checked={dialog.form[cartonField] === option}
+                                                                    onChange={(event) => updateField(cartonField, event.target.value)}
+                                                                    className="h-4 w-4 border-slate-300 text-slate-900 focus:ring-slate-500"
+                                                                />
+                                                                <span>{option}</span>
+                                                            </label>
+                                                        ))}
+                                                    </div>
+                                                    {dialog.form[cartonField] === 'Nie' && (
+                                                        <textarea
+                                                            value={dialog.form[cartonNoteField]}
+                                                            onChange={(event) => updateField(cartonNoteField, event.target.value)}
+                                                            rows={3}
+                                                            placeholder="Wpisz uwagi"
+                                                            className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-500"
+                                                        />
+                                                    )}
+                                                </div>
+                                            </FormField>
+                                        );
+                                    })}
+                                </>
+                            )}
                             <FormField label="Komentarz">
                                 <textarea value={dialog.form.comment} onChange={(event) => updateField('comment', event.target.value)} rows={4} className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-500" />
                             </FormField>
