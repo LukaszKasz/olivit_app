@@ -23,6 +23,41 @@ class MainProductTestOrderUpdate(BaseModel):
     clarification_note: Optional[str] = None
 
 
+class MainProductLabResultItemUpdate(BaseModel):
+    detail_id: int
+    result_value: str = ""
+    notes: Optional[str] = None
+
+
+class MainProductLabResultsUpdate(BaseModel):
+    results: list[MainProductLabResultItemUpdate]
+
+
+class MainProductLabResultItemResponse(BaseModel):
+    detail_id: int
+    parameter_type_pl: str
+    parameter_type_en: str
+    parameter_name_pl: str
+    parameter_name_en: str
+    requirement_pl: str
+    requirement_en: str
+    method_pl: str
+    method_en: str
+    result_value: str = ""
+    notes: Optional[str] = None
+    updated_at: Optional[datetime] = None
+
+
+class MainProductLabResultsResponse(BaseModel):
+    ordered_test_id: int
+    project_number: str
+    product_name: str
+    batch_number: str
+    laboratory_name: Optional[str] = None
+    saved_at: Optional[datetime] = None
+    results: list[MainProductLabResultItemResponse]
+
+
 class MainProductTestOrderResponse(BaseModel):
     id: int
     project_number: str

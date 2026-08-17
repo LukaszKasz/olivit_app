@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { mainProductsAPI } from '../api';
 
@@ -34,6 +34,21 @@ const MOVE_OPTIONS = [
     { value: 'archive', label: 'Archiwum', path: '/main-products/archive' },
 ];
 
+function createInitialLabResultsDialog() {
+    return {
+        open: false,
+        loading: false,
+        saving: false,
+        orderedTestId: null,
+        projectNumber: '',
+        productName: '',
+        batchNumber: '',
+        laboratoryName: '',
+        savedAt: null,
+        results: [],
+    };
+}
+
 function MainProductOrderedTestsPage({
     title = 'Bulk / Baza produktów - Badania zlecone',
     description = 'Widok Badania zlecone w module Bulk / Baza produktów prezentuje listę produktów głównych, dla których został uruchomiony proces badań laboratoryjnych.',
@@ -68,6 +83,7 @@ function MainProductOrderedTestsPage({
         orders: [],
         targetStatus: 'ordered_tests',
     });
+    const [labResultsDialog, setLabResultsDialog] = useState(createInitialLabResultsDialog);
 
     const loadOrders = async () => {
         const data = await mainProductsAPI.getOrderedTests();
@@ -314,6 +330,102 @@ function MainProductOrderedTestsPage({
         }
     };
 
+    const openLabResultsDialog = async () => {
+        if (!selectedOrder) {
+            return;
+        }
+
+        setLabResultsDialog({
+            ...createInitialLabResultsDialog(),
+            open: true,
+            loading: true,
+            orderedTestId: selectedOrder.id,
+            projectNumber: selectedOrder.project_number || '',
+            productName: selectedOrder.name || '',
+            batchNumber: selectedOrder.batch_number || '',
+            laboratoryName: selectedOrder.laboratory_name || '',
+        });
+
+        try {
+            const response = await mainProductsAPI.getLabResults(selectedOrder.id);
+            setLabResultsDialog({
+                open: true,
+                loading: false,
+                saving: false,
+                orderedTestId: response.ordered_test_id,
+                projectNumber: response.project_number || '',
+                productName: response.product_name || '',
+                batchNumber: response.batch_number || '',
+                laboratoryName: response.laboratory_name || '',
+                savedAt: response.saved_at || null,
+                results: Array.isArray(response.results)
+                    ? response.results.map((result) => ({
+                        ...result,
+                        result_value: result.result_value || '',
+                        notes: result.notes || '',
+                    }))
+                    : [],
+            });
+            setError('');
+        } catch (err) {
+            setLabResultsDialog(createInitialLabResultsDialog());
+            setError(err?.response?.data?.detail || err.message || 'Nie udało się pobrać wyników badań laboratoryjnych Bulk.');
+        }
+    };
+
+    const closeLabResultsDialog = () => {
+        if (labResultsDialog.saving) {
+            return;
+        }
+        setLabResultsDialog(createInitialLabResultsDialog());
+    };
+
+    const updateLabResult = (detailId, field, value) => {
+        setLabResultsDialog((current) => ({
+            ...current,
+            results: current.results.map((result) => (
+                result.detail_id === detailId ? { ...result, [field]: value } : result
+            )),
+        }));
+    };
+
+    const handleSaveLabResults = async () => {
+        if (!labResultsDialog.orderedTestId) {
+            return;
+        }
+
+        try {
+            setLabResultsDialog((current) => ({ ...current, saving: true }));
+            const response = await mainProductsAPI.saveLabResults(
+                labResultsDialog.orderedTestId,
+                {
+                    results: labResultsDialog.results.map((result) => ({
+                        detail_id: result.detail_id,
+                        result_value: result.result_value,
+                        notes: result.notes,
+                    })),
+                }
+            );
+            setLabResultsDialog((current) => ({
+                ...current,
+                saving: false,
+                savedAt: response.saved_at || null,
+                results: Array.isArray(response.results)
+                    ? response.results.map((result) => ({
+                        ...result,
+                        result_value: result.result_value || '',
+                        notes: result.notes || '',
+                    }))
+                    : current.results,
+            }));
+            setSuccess(`Zapisano wyniki badań Bulk dla serii ${labResultsDialog.batchNumber}.`);
+            setError('');
+        } catch (err) {
+            setLabResultsDialog((current) => ({ ...current, saving: false }));
+            setError(err?.response?.data?.detail || err.message || 'Nie udało się zapisać wyników badań laboratoryjnych Bulk.');
+        }
+    };
+
     const openDocumentsDialog = (targetOrders, mode = 'add') => {
         const normalizedOrders = Array.isArray(targetOrders) ? targetOrders : [targetOrders];
         setDocumentsDialog({
@@ -379,6 +491,17 @@ function MainProductOrderedTestsPage({
         : null;
     const isDocumentsPreviewMode = documentsDialog.mode === 'preview';
 
+    const groupedLabResults = labResultsDialog.results.reduce((groups, result) => {
+        const key = `${result.parameter_type_en} / ${result.parameter_type_pl}`;
+        const existingGroup = groups.find((group) => group.label === key);
+        if (existingGroup) {
+            existingGroup.items.push(result);
+            return groups;
+        }
+        groups.push({ label: key, items: [result] });
+        return groups;
+    }, []);
+
     const showClarificationColumn = viewMode === 'to_clarify' || viewMode === 'all';
 
     return (
@@ -412,6 +535,14 @@ function MainProductOrderedTestsPage({
                 <div className="flex flex-wrap items-center gap-2">
                     {(activeActionStatus === 'ordered_tests') && (
                         <>
+                            <button
+                                type="button"
+                                onClick={openLabResultsDialog}
+                                className="rounded-2xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                disabled={!selectedOrder}
+                            >
+                                Dodaj wyniki badań
+                            </button>
                             <button
                                 type="button"
                                 onClick={() => openDocumentsDialog(selectedOrders)}
@@ -624,6 +755,121 @@ function MainProductOrderedTestsPage({
                     </table>
                 </div>
             </div>
+
+            {labResultsDialog.open && (
+                <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/40 p-4 md:p-8">
+                    <div className="flex max-h-[calc(100vh-48px)] w-full max-w-6xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl">
+                        <div className="border-b border-slate-200 px-6 py-5">
+                            <h2 className="text-xl font-semibold text-slate-900">Wyniki badań laboratoryjnych Bulk</h2>
+                            <p className="mt-1 text-sm text-slate-600">
+                                Projekt {labResultsDialog.projectNumber} · {labResultsDialog.productName} · seria {labResultsDialog.batchNumber}
+                                {labResultsDialog.laboratoryName ? ` · ${labResultsDialog.laboratoryName}` : ''}
+                            </p>
+                        </div>
+                        <div className="flex-1 overflow-y-auto px-6 py-5">
+                            {labResultsDialog.loading ? (
+                                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
+                                    Ładowanie parametrów i zapisanych wyników...
+                                </div>
+                            ) : (
+                                <>
+                                    <div className="mb-4 flex flex-col justify-between gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600 sm:flex-row sm:items-center">
+                                        <span>
+                                            Uzupełnione wyniki: <span className="font-semibold text-slate-900">
+                                                {labResultsDialog.results.filter((result) => result.result_value.trim() || result.notes.trim()).length}
+                                            </span> z {labResultsDialog.results.length}
+                                        </span>
+                                        <span>
+                                            {labResultsDialog.savedAt
+                                                ? `Ostatni zapis: ${new Date(labResultsDialog.savedAt).toLocaleString('pl-PL')}`
+                                                : 'Wyniki nie były jeszcze zapisywane'}
+                                        </span>
+                                    </div>
+                                    <div className="max-h-[65vh] overflow-auto rounded-2xl border border-slate-200">
+                                        {labResultsDialog.results.length === 0 ? (
+                                            <div className="px-4 py-8 text-center text-sm text-slate-500">
+                                                Brak parametrów badania dla numeru tego projektu Bulk.
+                                            </div>
+                                        ) : (
+                                            <table className="w-full min-w-[1050px] text-left text-sm">
+                                                <thead className="sticky top-0 z-10 bg-slate-50 text-xs uppercase tracking-[0.14em] text-slate-500">
+                                                    <tr>
+                                                        <th className="px-4 py-4">Parametr</th>
+                                                        <th className="px-4 py-4">Wymaganie</th>
+                                                        <th className="px-4 py-4">Metoda</th>
+                                                        <th className="min-w-[220px] px-4 py-4">Wynik z laboratorium</th>
+                                                        <th className="min-w-[220px] px-4 py-4">Uwagi</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {groupedLabResults.map((group) => (
+                                                        <Fragment key={group.label}>
+                                                            <tr className="border-t border-slate-200 bg-amber-100/80">
+                                                                <td colSpan={5} className="px-4 py-3 text-sm font-semibold text-amber-950">
+                                                                    {group.label}
+                                                                </td>
+                                                            </tr>
+                                                            {group.items.map((result) => (
+                                                                <tr key={result.detail_id} className="border-t border-slate-100 align-top">
+                                                                    <td className="px-4 py-4 text-slate-700">
+                                                                        {result.parameter_name_en} / {result.parameter_name_pl}
+                                                                    </td>
+                                                                    <td className="px-4 py-4 text-slate-700">
+                                                                        {result.requirement_en} / {result.requirement_pl}
+                                                                    </td>
+                                                                    <td className="px-4 py-4 text-slate-700">
+                                                                        {result.method_en} / {result.method_pl}
+                                                                    </td>
+                                                                    <td className="px-4 py-4">
+                                                                        <textarea
+                                                                            value={result.result_value}
+                                                                            onChange={(event) => updateLabResult(result.detail_id, 'result_value', event.target.value)}
+                                                                            rows={3}
+                                                                            placeholder="Wpisz wynik otrzymany z laboratorium"
+                                                                            className="w-full resize-y rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+                                                                        />
+                                                                    </td>
+                                                                    <td className="px-4 py-4">
+                                                                        <textarea
+                                                                            value={result.notes}
+                                                                            onChange={(event) => updateLabResult(result.detail_id, 'notes', event.target.value)}
+                                                                            rows={3}
+                                                                            placeholder="Opcjonalne uwagi"
+                                                                            className="w-full resize-y rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+                                                                        />
+                                                                    </td>
+                                                                </tr>
+                                                            ))}
+                                                        </Fragment>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        )}
+                                    </div>
+                                </>
+                            )}
+                        </div>
+                        <div className="sticky bottom-0 flex justify-end gap-3 border-t border-slate-200 bg-white px-6 py-5">
+                            <button
+                                type="button"
+                                onClick={closeLabResultsDialog}
+                                className="rounded-2xl border border-slate-300 px-5 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                                disabled={labResultsDialog.saving}
+                            >
+                                Zamknij
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleSaveLabResults}
+                                disabled={labResultsDialog.loading || labResultsDialog.saving || labResultsDialog.results.length === 0}
+                                className="rounded-2xl bg-slate-900 px-5 py-3 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                                {labResultsDialog.saving ? 'Zapisywanie...' : 'Zapisz wyniki'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {documentsDialog.open && (
                 <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/40 p-4 md:p-8">

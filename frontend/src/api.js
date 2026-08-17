@@ -171,6 +171,14 @@ export const mainProductsAPI = {
         const response = await api.patch(`/api/main-products/ordered-tests/${orderId}`, payload);
         return response.data;
     },
+    getLabResults: async (orderId) => {
+        const response = await api.get(`/api/main-products/ordered-tests/${orderId}/lab-results`);
+        return response.data;
+    },
+    saveLabResults: async (orderId, payload) => {
+        const response = await api.put(`/api/main-products/ordered-tests/${orderId}/lab-results`, payload);
+        return response.data;
+    },
 };
 
 export const variantProductsAPI = {

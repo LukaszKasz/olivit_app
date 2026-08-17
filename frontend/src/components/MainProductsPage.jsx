@@ -9,7 +9,6 @@ function MainProductsPage({
 }) {
     const getInitialOrderDialog = () => ({
         open: false,
-        mode: 'test-order',
         laboratory: '',
         product: null,
         batchNumber: '',
@@ -107,22 +106,7 @@ function MainProductsPage({
         setOrderDialog({
             ...getInitialOrderDialog(),
             open: true,
-            mode: 'test-order',
             laboratory,
-            product,
-        });
-        setContextMenu((prev) => ({ ...prev, visible: false, submenuOpen: false }));
-    };
-
-    const handleBatchOnlyAction = (product = contextMenu.product) => {
-        if (!product) {
-            return;
-        }
-
-        setOrderDialog({
-            ...getInitialOrderDialog(),
-            open: true,
-            mode: 'batch-only',
             product,
         });
         setContextMenu((prev) => ({ ...prev, visible: false, submenuOpen: false }));
@@ -148,11 +132,7 @@ function MainProductsPage({
                     expiry_date: orderDialog.expiryDate || undefined,
                     planned_test_date: orderDialog.plannedTestDate || undefined,
                 });
-                setSuccess(
-                    orderDialog.mode === 'test-order'
-                        ? `Zlecono badania dla ${orderDialog.product.project_number} w ${orderDialog.laboratory}, seria: ${orderDialog.batchNumber}.`
-                        : `Dodano serię ${orderDialog.batchNumber} dla ${orderDialog.product.project_number}.`
-                );
+                setSuccess(`Zlecono badania dla ${orderDialog.product.project_number} w ${orderDialog.laboratory}, seria: ${orderDialog.batchNumber}.`);
                 setError('');
                 setOrderDialog(getInitialOrderDialog());
             } catch (err) {
@@ -224,10 +204,6 @@ function MainProductsPage({
                 items: [],
             });
         }
-    };
-
-    const handleAddBatchButtonClick = (product) => {
-        handleBatchOnlyAction(product);
     };
 
     const visibleProductIds = products.map((product) => product.id);
@@ -316,14 +292,6 @@ function MainProductsPage({
                         disabled={!selectedProduct}
                     >
                         Zleć badania
-                    </button>
-                    <button
-                        type="button"
-                        onClick={() => selectedProduct && handleAddBatchButtonClick(selectedProduct)}
-                        className="rounded-2xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-                        disabled={!selectedProduct}
-                    >
-                        Dodaj serię
                     </button>
                     <button
                         type="button"
@@ -457,44 +425,42 @@ function MainProductsPage({
                     <div className="max-h-[90vh] w-full max-w-5xl overflow-y-auto rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl">
                         <div className="mb-6">
                             <h2 className="text-2xl font-semibold text-slate-900">
-                                {orderDialog.mode === 'test-order' ? 'Zleć badania' : 'Dodaj serię'}
+                                Zleć badania
                             </h2>
                             <p className="mt-2 text-sm text-slate-600">
                                 {orderDialog.product?.project_number}
-                                {orderDialog.mode === 'test-order' && orderDialog.laboratory ? ` / ${orderDialog.laboratory}` : ''}
+                                {orderDialog.laboratory ? ` / ${orderDialog.laboratory}` : ''}
                             </p>
                         </div>
 
-                        {orderDialog.mode === 'test-order' && (
-                            <div className="mb-6 grid gap-4 md:grid-cols-2">
-                                <div>
-                                    <div className="block text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                                        Numer projektu
-                                    </div>
-                                    <div className="mt-3 rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-900">
-                                        {orderDialog.product?.project_number || '—'}
-                                    </div>
+                        <div className="mb-6 grid gap-4 md:grid-cols-2">
+                            <div>
+                                <div className="block text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                                    Numer projektu
                                 </div>
-                                <div>
-                                    <label className="block text-xs font-semibold uppercase tracking-[0.18em] text-slate-500" htmlFor="laboratory">
-                                        Laboratorium
-                                    </label>
-                                    <select
-                                        id="laboratory"
-                                        value={orderDialog.laboratory}
-                                        onChange={(event) => setOrderDialog((prev) => ({ ...prev, laboratory: event.target.value }))}
-                                        className="mt-3 w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-500 focus:bg-white"
-                                    >
-                                        <option value="">Wybierz laboratorium</option>
-                                        {LABORATORIES.map((laboratory) => (
-                                            <option key={laboratory} value={laboratory}>
-                                                {laboratory}
-                                            </option>
-                                        ))}
-                                    </select>
+                                <div className="mt-3 rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-900">
+                                    {orderDialog.product?.project_number || '—'}
                                 </div>
                             </div>
-                        )}
+                            <div>
+                                <label className="block text-xs font-semibold uppercase tracking-[0.18em] text-slate-500" htmlFor="laboratory">
+                                    Laboratorium
+                                </label>
+                                <select
+                                    id="laboratory"
+                                    value={orderDialog.laboratory}
+                                    onChange={(event) => setOrderDialog((prev) => ({ ...prev, laboratory: event.target.value }))}
+                                    className="mt-3 w-full rounded-2xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-500 focus:bg-white"
+                                >
+                                    <option value="">Wybierz laboratorium</option>
+                                    {LABORATORIES.map((laboratory) => (
+                                        <option key={laboratory} value={laboratory}>
+                                            {laboratory}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                        </div>
 
                         <div className="mb-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                             <div>
@@ -624,7 +590,7 @@ function MainProductsPage({
                             <button
                                 type="button"
                                 onClick={handleOrderSave}
-                                disabled={orderDialog.saving || !orderDialog.batchNumber.trim() || (orderDialog.mode === 'test-order' && !orderDialog.laboratory.trim())}
+                                disabled={orderDialog.saving || !orderDialog.batchNumber.trim() || !orderDialog.laboratory.trim()}
                                 className="rounded-2xl bg-slate-900 px-5 py-3 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
                             >
                                 {orderDialog.saving ? 'Zapisywanie...' : 'Zapisz'}

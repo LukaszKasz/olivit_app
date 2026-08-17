@@ -27,13 +27,20 @@ from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 from database import engine, get_db, Base, SessionLocal
-from main_product_orders_api import MainProductTestOrderCreate, MainProductTestOrderResponse, MainProductTestOrderUpdate
+from main_product_orders_api import (
+    MainProductLabResultsResponse,
+    MainProductLabResultsUpdate,
+    MainProductTestOrderCreate,
+    MainProductTestOrderResponse,
+    MainProductTestOrderUpdate,
+)
 from main_products_api import MainProductResponse, ProductDetailedParameterResponse
 from main_products_seed import MAIN_PRODUCTS
 from models import (
     User,
     IntegrationSettings,
     MainProduct,
+    MainProductLabResult,
     MainProductTestOrder,
     VariantProduct,
     VariantProductBatchTestOrder,
@@ -2492,6 +2499,159 @@ def update_main_product_test_order(
     db.commit()
     db.refresh(order)
     return order
+
+
+def get_main_product_order_for_lab_results(
+    db: Session,
+    ordered_test_id: int,
+) -> MainProductTestOrder:
+    order = (
+        db.query(MainProductTestOrder)
+        .filter(MainProductTestOrder.id == ordered_test_id)
+        .first()
+    )
+    if order:
+        return order
+
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail="Nie znaleziono wybranego zlecenia Bulk.",
+    )
+
+
+def get_main_product_details_for_lab_results(
+    db: Session,
+    project_number: str,
+) -> list[ProductDetailedParameter]:
+    main_product = (
+        db.query(MainProduct)
+        .filter(MainProduct.project_number == project_number)
+        .first()
+    )
+    if not main_product or main_product.id_szczegolow_produktu is None:
+        return []
+
+    return (
+        db.query(ProductDetailedParameter)
+        .filter(ProductDetailedParameter.id_szczegolow_produktu == main_product.id_szczegolow_produktu)
+        .order_by(ProductDetailedParameter.id.asc())
+        .all()
+    )
+
+
+def build_main_product_lab_results_response(
+    db: Session,
+    order: MainProductTestOrder,
+) -> dict:
+    details = get_main_product_details_for_lab_results(db, order.project_number)
+    saved_results = (
+        db.query(MainProductLabResult)
+        .filter(MainProductLabResult.ordered_test_id == order.id)
+        .all()
+    )
+    saved_by_detail_id = {result.detail_id: result for result in saved_results}
+    saved_at_values = [result.updated_at for result in saved_results if result.updated_at is not None]
+
+    return {
+        "ordered_test_id": order.id,
+        "project_number": order.project_number,
+        "product_name": order.name,
+        "batch_number": order.batch_number or "",
+        "laboratory_name": order.laboratory_name,
+        "saved_at": max(saved_at_values) if saved_at_values else None,
+        "results": [
+            {
+                "detail_id": detail.id,
+                "parameter_type_pl": detail.parameter_type_pl,
+                "parameter_type_en": detail.parameter_type_en,
+                "parameter_name_pl": detail.parameter_name_pl,
+                "parameter_name_en": detail.parameter_name_en,
+                "requirement_pl": detail.requirement_pl,
+                "requirement_en": detail.requirement_en,
+                "method_pl": detail.method_pl,
+                "method_en": detail.method_en,
+                "result_value": saved_by_detail_id[detail.id].result_value if detail.id in saved_by_detail_id else "",
+                "notes": saved_by_detail_id[detail.id].notes if detail.id in saved_by_detail_id else None,
+                "updated_at": saved_by_detail_id[detail.id].updated_at if detail.id in saved_by_detail_id else None,
+            }
+            for detail in details
+        ],
+    }
+
+
+@app.get(
+    "/api/main-products/ordered-tests/{ordered_test_id}/lab-results",
+    response_model=MainProductLabResultsResponse,
+)
+def get_main_product_lab_results(
+    ordered_test_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _ = current_user
+    order = get_main_product_order_for_lab_results(db, ordered_test_id)
+    return build_main_product_lab_results_response(db, order)
+
+
+@app.put(
+    "/api/main-products/ordered-tests/{ordered_test_id}/lab-results",
+    response_model=MainProductLabResultsResponse,
+)
+def save_main_product_lab_results(
+    ordered_test_id: int,
+    payload: MainProductLabResultsUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _ = current_user
+    order = get_main_product_order_for_lab_results(db, ordered_test_id)
+    details = get_main_product_details_for_lab_results(db, order.project_number)
+    if not details:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Nie znaleziono parametrów dla projektu wybranego zlecenia Bulk.",
+        )
+
+    allowed_detail_ids = {detail.id for detail in details}
+    results_by_detail_id = {item.detail_id: item for item in payload.results}
+    invalid_detail_ids = set(results_by_detail_id) - allowed_detail_ids
+    if invalid_detail_ids:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Przekazano parametry, które nie należą do wybranego projektu Bulk.",
+        )
+
+    existing_results = (
+        db.query(MainProductLabResult)
+        .filter(MainProductLabResult.ordered_test_id == ordered_test_id)
+        .all()
+    )
+    existing_by_detail_id = {result.detail_id: result for result in existing_results}
+
+    for item in results_by_detail_id.values():
+        result_value = item.result_value.strip()
+        notes = (item.notes or "").strip() or None
+        existing = existing_by_detail_id.get(item.detail_id)
+
+        if not result_value and not notes:
+            if existing:
+                db.delete(existing)
+            continue
+
+        if existing:
+            existing.result_value = result_value
+            existing.notes = notes
+            existing.updated_at = datetime.now(timezone.utc)
+        else:
+            db.add(MainProductLabResult(
+                ordered_test_id=ordered_test_id,
+                detail_id=item.detail_id,
+                result_value=result_value,
+                notes=notes,
+            ))
+
+    db.commit()
+    return build_main_product_lab_results_response(db, order)
 
 
 @app.get("/api/variant-products/batches/ordered-tests", response_model=list[VariantProductBatchTestOrderResponse])

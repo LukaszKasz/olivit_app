@@ -223,6 +223,21 @@ class VariantProductBatchLabResult(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False, index=True)
 
 
+class MainProductLabResult(Base):
+    __tablename__ = "main_product_lab_results"
+    __table_args__ = (
+        UniqueConstraint("ordered_test_id", "detail_id", name="uq_main_product_lab_result_order_detail"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    ordered_test_id = Column(Integer, nullable=False, index=True)
+    detail_id = Column(Integer, nullable=False, index=True)
+    result_value = Column(String(2000), nullable=False)
+    notes = Column(String(2000), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False, index=True)
+
+
 class VariantProductFinishedProductControl(Base):
     __tablename__ = "variant_product_finished_product_controls"
 
