@@ -1390,6 +1390,8 @@ class UserResponse(BaseModel):
     id: int
     username: str
     email: str
+    is_admin: bool
+    created_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
@@ -1403,6 +1405,20 @@ class Token(BaseModel):
 class LoginRequest(BaseModel):
     username: str
     password: str
+
+
+class UserAdminCreate(BaseModel):
+    username: str
+    email: EmailStr
+    password: str
+    is_admin: bool = False
+
+
+class UserAdminUpdate(BaseModel):
+    username: Optional[str] = None
+    email: Optional[EmailStr] = None
+    password: Optional[str] = None
+    is_admin: Optional[bool] = None
 
 
 class PrestashopSettingsDTO(BaseModel):
@@ -1574,6 +1590,22 @@ def ensure_integration_settings_schema() -> None:
     if "access_token_secret" not in columns:
         with engine.begin() as connection:
             connection.execute(text("ALTER TABLE integration_settings ADD COLUMN access_token_secret VARCHAR(255)"))
+
+
+def ensure_users_schema() -> None:
+    inspector = inspect(engine)
+    try:
+        columns = {col["name"] for col in inspector.get_columns("users")}
+    except Exception:
+        return
+
+    with engine.begin() as connection:
+        if "is_admin" not in columns:
+            connection.execute(text("ALTER TABLE users ADD COLUMN is_admin BOOLEAN NOT NULL DEFAULT FALSE"))
+        connection.execute(text(
+            "UPDATE users SET is_admin = TRUE WHERE id = (SELECT MIN(id) FROM users) "
+            "AND NOT EXISTS (SELECT 1 FROM users WHERE is_admin = TRUE)"
+        ))
 
 
 def ensure_main_product_test_orders_schema() -> None:
@@ -2123,6 +2155,7 @@ def build_diagnostics_response(db: Session, current_user: User, request: Request
 def startup_seed_settings():
     db = SessionLocal()
     try:
+        ensure_users_schema()
         ensure_integration_settings_schema()
         ensure_main_product_test_orders_schema()
         ensure_variant_product_batch_test_orders_schema()
@@ -2175,6 +2208,7 @@ def register(user_data: UserRegister, db: Session = Depends(get_db)):
         username=user_data.username,
         email=user_data.email,
         hashed_password=hashed_password,
+        is_admin=db.query(User).count() == 0,
     )
 
     db.add(new_user)
@@ -2216,6 +2250,116 @@ def read_users_me(current_user: User = Depends(get_current_user)):
     Protected endpoint - requires valid JWT token.
     """
     return current_user
+
+
+def require_admin(current_user: User = Depends(get_current_user)) -> User:
+    if not current_user.is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Ta operacja jest dostępna wyłącznie dla administratora.",
+        )
+    return current_user
+
+
+def validate_managed_user_data(db: Session, username: str, email: str, user_id: int | None = None) -> None:
+    normalized_username = username.strip()
+    normalized_email = email.strip().lower()
+    if len(normalized_username) < 3:
+        raise HTTPException(status_code=400, detail="Nazwa użytkownika musi mieć co najmniej 3 znaki.")
+
+    username_query = db.query(User).filter(User.username == normalized_username)
+    email_query = db.query(User).filter(User.email == normalized_email)
+    if user_id is not None:
+        username_query = username_query.filter(User.id != user_id)
+        email_query = email_query.filter(User.id != user_id)
+    if username_query.first():
+        raise HTTPException(status_code=400, detail="Nazwa użytkownika jest już zajęta.")
+    if email_query.first():
+        raise HTTPException(status_code=400, detail="Adres e-mail jest już używany.")
+
+
+@app.get("/api/users", response_model=list[UserResponse])
+def list_users(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    _ = current_user
+    return db.query(User).order_by(User.created_at.asc(), User.id.asc()).all()
+
+
+@app.post("/api/users", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
+def create_user_by_admin(
+    payload: UserAdminCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    _ = current_user
+    username = payload.username.strip()
+    email = payload.email.strip().lower()
+    validate_managed_user_data(db, username, email)
+    if len(payload.password) < 6:
+        raise HTTPException(status_code=400, detail="Hasło musi mieć co najmniej 6 znaków.")
+
+    user = User(
+        username=username,
+        email=email,
+        hashed_password=get_password_hash(payload.password),
+        is_admin=payload.is_admin,
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+@app.patch("/api/users/{user_id}", response_model=UserResponse)
+def update_user_by_admin(
+    user_id: int,
+    payload: UserAdminUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Nie znaleziono użytkownika.")
+
+    username = payload.username.strip() if payload.username is not None else user.username
+    email = payload.email.strip().lower() if payload.email is not None else user.email
+    if user.id == current_user.id and username != user.username:
+        raise HTTPException(
+            status_code=400,
+            detail="Nie możesz zmienić własnej nazwy użytkownika podczas aktywnej sesji.",
+        )
+    validate_managed_user_data(db, username, email, user.id)
+    if payload.password is not None and payload.password and len(payload.password) < 6:
+        raise HTTPException(status_code=400, detail="Hasło musi mieć co najmniej 6 znaków.")
+    if user.id == current_user.id and payload.is_admin is False:
+        raise HTTPException(status_code=400, detail="Nie możesz odebrać sobie roli administratora.")
+
+    user.username = username
+    user.email = email
+    if payload.password:
+        user.hashed_password = get_password_hash(payload.password)
+    if payload.is_admin is not None:
+        user.is_admin = payload.is_admin
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+@app.delete("/api/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_user_by_admin(
+    user_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    if user_id == current_user.id:
+        raise HTTPException(status_code=400, detail="Nie możesz usunąć własnego konta.")
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Nie znaleziono użytkownika.")
+    db.delete(user)
+    db.commit()
 
 
 @app.get("/api/database/export")

@@ -13,6 +13,7 @@ import DiagnosticsPage from './components/DiagnosticsPage';
 import AsanaPage from './components/AsanaPage';
 import BrdPage from './components/BrdPage';
 import Dashboard from './components/Dashboard';
+import UsersPage from './components/UsersPage';
 import { tokenManager } from './api';
 import { getAppBasePath } from './appBase';
 
@@ -218,6 +219,7 @@ function App() {
                     <Route path="/brd" element={<BrdPage />} />
                     <Route path="/asana" element={<AsanaPage />} />
                     <Route path="/diagnostics" element={<DiagnosticsPage />} />
+                    <Route path="/users" element={<UsersPage />} />
                 </Route>
             </Routes>
         </Router>

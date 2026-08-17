@@ -87,6 +87,24 @@ export const integrationSettingsAPI = {
     },
 };
 
+export const usersAPI = {
+    getUsers: async () => {
+        const response = await api.get('/api/users');
+        return response.data;
+    },
+    createUser: async (payload) => {
+        const response = await api.post('/api/users', payload);
+        return response.data;
+    },
+    updateUser: async (userId, payload) => {
+        const response = await api.patch(`/api/users/${userId}`, payload);
+        return response.data;
+    },
+    deleteUser: async (userId) => {
+        await api.delete(`/api/users/${userId}`);
+    },
+};
+
 export const diagnosticsAPI = {
     getSystemDiagnostics: async () => {
         const response = await api.get('/api/system/diagnostics');
