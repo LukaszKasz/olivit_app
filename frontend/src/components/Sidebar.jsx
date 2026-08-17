@@ -88,8 +88,14 @@ function Sidebar({ collapsed, onToggle }) {
 
             {/* Top navigation */}
             <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
+                <NavLink to="/dashboard" end className={navLinkClass} title="Dashboard">
+                    <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 13h6V4H4v9zm10 7h6v-9h-6v9zM4 20h6v-3H4v3zm10-13h6V4h-6v3z" />
+                    </svg>
+                    {!collapsed && <span className="whitespace-nowrap">Dashboard</span>}
+                </NavLink>
                 {productMenuSections.map((section, sectionIndex) => (
-                    <div key={section.groups[0].items[0].to} className={sectionIndex > 0 ? 'mt-3 border-t border-slate-700/50 pt-3' : ''}>
+                    <div key={section.groups[0].items[0].to} className="mt-3 border-t border-slate-700/50 pt-3">
                         {!collapsed && section.title ? (
                             <p className="px-4 pb-2 text-xs font-semibold uppercase tracking-[0.18em] text-sky-300">
                                 {section.title}

@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, Boolean
+from sqlalchemy import Column, Integer, String, DateTime, Boolean, UniqueConstraint
 from sqlalchemy.sql import func
 from database import Base
 
@@ -206,6 +206,21 @@ class VariantProductBatchTestOrderArchive(Base):
     linked_document_names = Column(String(4000), nullable=True)
     control_saved_at = Column(DateTime(timezone=True), nullable=True, index=True)
     archived_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
+
+
+class VariantProductBatchLabResult(Base):
+    __tablename__ = "variant_product_batch_lab_results"
+    __table_args__ = (
+        UniqueConstraint("ordered_test_id", "detail_id", name="uq_variant_batch_lab_result_order_detail"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    ordered_test_id = Column(Integer, nullable=False, index=True)
+    detail_id = Column(Integer, nullable=False, index=True)
+    result_value = Column(String(2000), nullable=False)
+    notes = Column(String(2000), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False, index=True)
 
 
 class VariantProductFinishedProductControl(Base):

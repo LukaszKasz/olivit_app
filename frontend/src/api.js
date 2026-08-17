@@ -232,6 +232,14 @@ export const variantProductsAPI = {
         const response = await api.post('/api/variant-products/batches/coa', payload, { responseType: 'blob' });
         return response;
     },
+    getBatchLabResults: async (orderId) => {
+        const response = await api.get(`/api/variant-products/batches/${orderId}/lab-results`);
+        return response.data;
+    },
+    saveBatchLabResults: async (orderId, payload) => {
+        const response = await api.put(`/api/variant-products/batches/${orderId}/lab-results`, payload);
+        return response.data;
+    },
     getProjectDetails: async (projectNumber) => {
         const response = await api.get(`/api/variant-products/projects/${projectNumber}/details`);
         return response.data;

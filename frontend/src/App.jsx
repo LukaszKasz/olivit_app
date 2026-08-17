@@ -12,6 +12,7 @@ import VariantProductBatchOrderedTestsPage from './components/VariantProductBatc
 import DiagnosticsPage from './components/DiagnosticsPage';
 import AsanaPage from './components/AsanaPage';
 import BrdPage from './components/BrdPage';
+import Dashboard from './components/Dashboard';
 import { tokenManager } from './api';
 import { getAppBasePath } from './appBase';
 
@@ -25,7 +26,7 @@ function App() {
     return (
         <Router basename={basename === '/' ? undefined : basename}>
             <Routes>
-                <Route path="/" element={<Navigate to="/login" />} />
+                <Route path="/" element={<Navigate to={tokenManager.isAuthenticated() ? '/dashboard' : '/login'} replace />} />
                 <Route path="/login" element={<LoginForm />} />
                 <Route path="/register" element={<RegisterForm />} />
                 <Route
@@ -35,6 +36,7 @@ function App() {
                         </ProtectedRoute>
                     }
                 >
+                    <Route path="/dashboard" element={<Dashboard />} />
                     <Route
                         path="/main-products"
                         element={<MainProductsPage title="Bulk / Baza produktów" />}

@@ -38,6 +38,7 @@ from models import (
     VariantProduct,
     VariantProductBatchTestOrder,
     VariantProductBatchTestOrderArchive,
+    VariantProductBatchLabResult,
     VariantProductFinishedProductControl,
     ProductDetailedParameter,
 )
@@ -45,6 +46,8 @@ from variant_products_api import VariantProductResponse, VariantProductsPageResp
 from variant_product_batch_orders_api import (
     VariantProductBatchArchiveRequest,
     VariantProductBatchCoARequest,
+    VariantProductBatchLabResultsResponse,
+    VariantProductBatchLabResultsUpdate,
     VariantProductBatchRelatedLabelControlsResponse,
     VariantProductBatchRetestRequest,
     VariantProductBatchRelatedLabelControlResponse,
@@ -3216,6 +3219,180 @@ def save_variant_product_batch_documents(
         "updated_count": len(rows),
         "document_names": document_names,
     }
+
+
+def build_variant_batch_lab_results_response(
+    db: Session,
+    order: VariantProductBatchTestOrder | VariantProductBatchTestOrderArchive,
+    ordered_test_id: int,
+) -> dict:
+    project_number = get_project_number_from_variant_sku(order.sku)
+    if not project_number:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Nie znaleziono numeru projektu dla wybranej partii.",
+        )
+
+    main_product = db.query(MainProduct).filter(MainProduct.project_number == project_number).first()
+    details = []
+    if main_product and main_product.id_szczegolow_produktu is not None:
+        details = (
+            db.query(ProductDetailedParameter)
+            .filter(ProductDetailedParameter.id_szczegolow_produktu == main_product.id_szczegolow_produktu)
+            .order_by(ProductDetailedParameter.id.asc())
+            .all()
+        )
+
+    saved_results = (
+        db.query(VariantProductBatchLabResult)
+        .filter(VariantProductBatchLabResult.ordered_test_id == ordered_test_id)
+        .all()
+    )
+    saved_by_detail_id = {result.detail_id: result for result in saved_results}
+    saved_at_values = [result.updated_at for result in saved_results if result.updated_at is not None]
+
+    return {
+        "ordered_test_id": ordered_test_id,
+        "project_number": project_number,
+        "sku": order.sku,
+        "batch_number": order.batch_number,
+        "laboratory_name": order.laboratory_name,
+        "saved_at": max(saved_at_values) if saved_at_values else None,
+        "results": [
+            {
+                "detail_id": detail.id,
+                "parameter_type_pl": detail.parameter_type_pl,
+                "parameter_type_en": detail.parameter_type_en,
+                "parameter_name_pl": detail.parameter_name_pl,
+                "parameter_name_en": detail.parameter_name_en,
+                "requirement_pl": detail.requirement_pl,
+                "requirement_en": detail.requirement_en,
+                "method_pl": detail.method_pl,
+                "method_en": detail.method_en,
+                "result_value": saved_by_detail_id[detail.id].result_value if detail.id in saved_by_detail_id else "",
+                "notes": saved_by_detail_id[detail.id].notes if detail.id in saved_by_detail_id else None,
+                "updated_at": saved_by_detail_id[detail.id].updated_at if detail.id in saved_by_detail_id else None,
+            }
+            for detail in details
+        ],
+    }
+
+
+def get_variant_batch_order_for_lab_results(
+    db: Session,
+    ordered_test_id: int,
+) -> VariantProductBatchTestOrder | VariantProductBatchTestOrderArchive:
+    order = (
+        db.query(VariantProductBatchTestOrder)
+        .filter(VariantProductBatchTestOrder.id == ordered_test_id)
+        .first()
+    )
+    if order:
+        return order
+
+    archived_order = (
+        db.query(VariantProductBatchTestOrderArchive)
+        .filter(VariantProductBatchTestOrderArchive.ordered_test_id == ordered_test_id)
+        .order_by(VariantProductBatchTestOrderArchive.id.desc())
+        .first()
+    )
+    if archived_order:
+        return archived_order
+
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail="Nie znaleziono wybranej partii.",
+    )
+
+
+@app.get(
+    "/api/variant-products/batches/{ordered_test_id}/lab-results",
+    response_model=VariantProductBatchLabResultsResponse,
+)
+def get_variant_product_batch_lab_results(
+    ordered_test_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _ = current_user
+    order = get_variant_batch_order_for_lab_results(db, ordered_test_id)
+    return build_variant_batch_lab_results_response(db, order, ordered_test_id)
+
+
+@app.put(
+    "/api/variant-products/batches/{ordered_test_id}/lab-results",
+    response_model=VariantProductBatchLabResultsResponse,
+)
+def save_variant_product_batch_lab_results(
+    ordered_test_id: int,
+    payload: VariantProductBatchLabResultsUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _ = current_user
+    order = get_variant_batch_order_for_lab_results(db, ordered_test_id)
+    project_number = get_project_number_from_variant_sku(order.sku)
+    main_product = (
+        db.query(MainProduct)
+        .filter(MainProduct.project_number == project_number)
+        .first()
+        if project_number
+        else None
+    )
+    if not main_product or main_product.id_szczegolow_produktu is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Nie znaleziono parametrów dla projektu wybranej partii.",
+        )
+
+    allowed_detail_ids = {
+        detail_id
+        for (detail_id,) in (
+            db.query(ProductDetailedParameter.id)
+            .filter(ProductDetailedParameter.id_szczegolow_produktu == main_product.id_szczegolow_produktu)
+            .all()
+        )
+    }
+    results_by_detail_id = {item.detail_id: item for item in payload.results}
+    requested_detail_ids = set(results_by_detail_id)
+    invalid_detail_ids = requested_detail_ids - allowed_detail_ids
+    if invalid_detail_ids:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Przekazano parametry, które nie należą do wybranego projektu.",
+        )
+
+    existing_results = (
+        db.query(VariantProductBatchLabResult)
+        .filter(VariantProductBatchLabResult.ordered_test_id == ordered_test_id)
+        .all()
+    )
+    existing_by_detail_id = {result.detail_id: result for result in existing_results}
+
+    for item in results_by_detail_id.values():
+        result_value = item.result_value.strip()
+        notes = (item.notes or "").strip() or None
+        existing = existing_by_detail_id.get(item.detail_id)
+
+        if not result_value and not notes:
+            if existing:
+                db.delete(existing)
+            continue
+
+        if existing:
+            existing.result_value = result_value
+            existing.notes = notes
+            existing.updated_at = datetime.now(timezone.utc)
+        else:
+            db.add(VariantProductBatchLabResult(
+                ordered_test_id=ordered_test_id,
+                detail_id=item.detail_id,
+                result_value=result_value,
+                notes=notes,
+            ))
+
+    db.commit()
+    return build_variant_batch_lab_results_response(db, order, ordered_test_id)
 
 
 @app.post("/api/variant-products/batches/coa")

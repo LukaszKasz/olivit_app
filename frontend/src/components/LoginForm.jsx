@@ -30,7 +30,7 @@ function LoginForm() {
         try {
             const response = await authAPI.login(formData.username, formData.password);
             tokenManager.setToken(response.access_token);
-            navigate('/main-products');
+            navigate('/dashboard');
         } catch (err) {
             if (!err.response) {
                 setError(t('login.errorNetwork'));

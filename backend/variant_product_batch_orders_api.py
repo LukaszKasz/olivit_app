@@ -79,6 +79,41 @@ class VariantProductBatchCoARequest(BaseModel):
     conclusion_text: str = ""
 
 
+class VariantProductBatchLabResultItemUpdate(BaseModel):
+    detail_id: int
+    result_value: str = ""
+    notes: Optional[str] = None
+
+
+class VariantProductBatchLabResultsUpdate(BaseModel):
+    results: list[VariantProductBatchLabResultItemUpdate]
+
+
+class VariantProductBatchLabResultItemResponse(BaseModel):
+    detail_id: int
+    parameter_type_pl: str
+    parameter_type_en: str
+    parameter_name_pl: str
+    parameter_name_en: str
+    requirement_pl: str
+    requirement_en: str
+    method_pl: str
+    method_en: str
+    result_value: str = ""
+    notes: Optional[str] = None
+    updated_at: Optional[datetime] = None
+
+
+class VariantProductBatchLabResultsResponse(BaseModel):
+    ordered_test_id: int
+    project_number: str
+    sku: str
+    batch_number: str
+    laboratory_name: Optional[str] = None
+    saved_at: Optional[datetime] = None
+    results: list[VariantProductBatchLabResultItemResponse]
+
+
 class VariantProductBatchTestOrderResponse(BaseModel):
     id: int
     test_order_id: Optional[int] = None

@@ -26,6 +26,21 @@ function buildDefaultCoaConclusion(projectNumber) {
     return `The product meets the requirements of the product specification in accordance with the product sheet ${projectNumber}.\nProdukt spełnia wymagania specyfikacji produktu zgodnie z kartą produktu ${projectNumber}.`;
 }
 
+function createInitialLabResultsDialog() {
+    return {
+        open: false,
+        loading: false,
+        saving: false,
+        orderedTestId: null,
+        projectNumber: '',
+        sku: '',
+        batchNumber: '',
+        laboratoryName: '',
+        savedAt: null,
+        results: [],
+    };
+}
+
 function getTodayDateValue() {
     return new Date().toISOString().slice(0, 10);
 }
@@ -346,6 +361,7 @@ function VariantProductBatchOrderedTestsPage({
         selectedLinkedDocumentNames: [],
         conclusionText: '',
     });
+    const [labResultsDialog, setLabResultsDialog] = useState(createInitialLabResultsDialog);
     const [documentsDialog, setDocumentsDialog] = useState({
         open: false,
         saving: false,
@@ -727,6 +743,18 @@ function VariantProductBatchOrderedTestsPage({
         });
         return groups;
     }, []);
+    const groupedLabResults = labResultsDialog.results.reduce((groups, result) => {
+        const key = `${result.parameter_type_en} / ${result.parameter_type_pl}`;
+        const existingGroup = groups.find((group) => group.label === key);
+
+        if (existingGroup) {
+            existingGroup.items.push(result);
+            return groups;
+        }
+
+        groups.push({ label: key, items: [result] });
+        return groups;
+    }, []);
     const visibleRowIds = filteredRows.map((row) => row.id);
     const allVisibleSelected = visibleRowIds.length > 0 && visibleRowIds.every((id) => selectedRowIds.includes(id));
     const displayCount = filteredRows.length;
@@ -1047,6 +1075,108 @@ function VariantProductBatchOrderedTestsPage({
         }
     };
 
+    const openLabResultsDialog = async () => {
+        if (selectedRowIds.length !== 1) {
+            return;
+        }
+
+        const selectedRow = rows.find((row) => row.id === selectedRowIds[0]);
+        if (!selectedRow) {
+            return;
+        }
+
+        const orderedTestId = selectedRow.test_order_id || selectedRow.id;
+        setLabResultsDialog({
+            ...createInitialLabResultsDialog(),
+            open: true,
+            loading: true,
+            orderedTestId,
+            projectNumber: selectedRow.project_number || '',
+            sku: selectedRow.sku || '',
+            batchNumber: selectedRow.batch_number || '',
+            laboratoryName: selectedRow.laboratory_name || '',
+        });
+
+        try {
+            const response = await variantProductsAPI.getBatchLabResults(orderedTestId);
+            setLabResultsDialog({
+                open: true,
+                loading: false,
+                saving: false,
+                orderedTestId: response.ordered_test_id,
+                projectNumber: response.project_number || '',
+                sku: response.sku || '',
+                batchNumber: response.batch_number || '',
+                laboratoryName: response.laboratory_name || '',
+                savedAt: response.saved_at || null,
+                results: Array.isArray(response.results)
+                    ? response.results.map((result) => ({
+                        ...result,
+                        result_value: result.result_value || '',
+                        notes: result.notes || '',
+                    }))
+                    : [],
+            });
+            setError('');
+        } catch (err) {
+            setLabResultsDialog(createInitialLabResultsDialog());
+            setError(err?.response?.data?.detail || err.message || 'Nie udało się pobrać wyników badań laboratoryjnych.');
+        }
+    };
+
+    const closeLabResultsDialog = () => {
+        if (labResultsDialog.saving) {
+            return;
+        }
+        setLabResultsDialog(createInitialLabResultsDialog());
+    };
+
+    const updateLabResult = (detailId, field, value) => {
+        setLabResultsDialog((current) => ({
+            ...current,
+            results: current.results.map((result) => (
+                result.detail_id === detailId ? { ...result, [field]: value } : result
+            )),
+        }));
+    };
+
+    const handleSaveLabResults = async () => {
+        if (!labResultsDialog.orderedTestId) {
+            return;
+        }
+
+        try {
+            setLabResultsDialog((current) => ({ ...current, saving: true }));
+            const response = await variantProductsAPI.saveBatchLabResults(
+                labResultsDialog.orderedTestId,
+                {
+                    results: labResultsDialog.results.map((result) => ({
+                        detail_id: result.detail_id,
+                        result_value: result.result_value,
+                        notes: result.notes,
+                    })),
+                }
+            );
+            setLabResultsDialog((current) => ({
+                ...current,
+                saving: false,
+                savedAt: response.saved_at || null,
+                results: Array.isArray(response.results)
+                    ? response.results.map((result) => ({
+                        ...result,
+                        result_value: result.result_value || '',
+                        notes: result.notes || '',
+                    }))
+                    : current.results,
+            }));
+            setSuccess(`Zapisano wyniki badań dla partii ${labResultsDialog.batchNumber}.`);
+            setError('');
+        } catch (err) {
+            setLabResultsDialog((current) => ({ ...current, saving: false }));
+            setError(err?.response?.data?.detail || err.message || 'Nie udało się zapisać wyników badań laboratoryjnych.');
+        }
+    };
+
     const handleGenerateCoA = async () => {
         const selectedRows = rows.filter((row) => selectedRowIds.includes(row.id));
         const projectNumbers = Array.from(new Set(selectedRows.map((row) => row.project_number).filter(Boolean)));
@@ -1296,7 +1426,7 @@ function VariantProductBatchOrderedTestsPage({
 
             <div className="mb-4 flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600 shadow-sm">
                 <span>Zaznaczone: <span className="font-semibold text-slate-900">{selectedRowIds.length}</span></span>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center justify-end gap-2">
                     {enableFinishedProductControl && allowCreateFinishedProductControl && (
                         <button
                             type="button"
@@ -1335,6 +1465,16 @@ function VariantProductBatchOrderedTestsPage({
                             disabled={selectedRowIds.length === 0}
                         >
                             Generuj CoA
+                        </button>
+                    )}
+                    {!enableFinishedProductControl && !archiveMode && viewMode === 'ordered_tests' && (
+                        <button
+                            type="button"
+                            onClick={openLabResultsDialog}
+                            className="rounded-2xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                            disabled={selectedRowIds.length !== 1}
+                        >
+                            Dodaj wyniki badań
                         </button>
                     )}
                     {!enableFinishedProductControl && canBatchManage && (
@@ -1544,6 +1684,7 @@ function VariantProductBatchOrderedTestsPage({
                                     </th>
                                     <th className="px-6 py-4">Status badań</th>
                                     <th className="px-6 py-4">Status etykiet</th>
+                                    <th className="px-6 py-4">Status wyników</th>
                                     <th className="px-6 py-4">Numer projektu</th>
                                     <th className="px-6 py-4">Numer wariantu</th>
                                     <th className="w-[22rem] min-w-[22rem] px-6 py-4">Nazwa</th>
@@ -1592,13 +1733,13 @@ function VariantProductBatchOrderedTestsPage({
                         <tbody>
                             {loading ? (
                                 <tr className="border-t border-slate-100">
-                                    <td colSpan={enableFinishedProductControl ? (isCurrentFinishedProductControlView ? 15 : 51) : showClarificationColumn ? 46 : 45} className="px-6 py-10 text-center text-slate-500">
+                                    <td colSpan={enableFinishedProductControl ? (isCurrentFinishedProductControlView ? 15 : 51) : showClarificationColumn ? 47 : 46} className="px-6 py-10 text-center text-slate-500">
                                         {enableFinishedProductControl ? 'Ładowanie kontroli produktu gotowego...' : 'Ładowanie zleconych badań partii...'}
                                     </td>
                                 </tr>
                             ) : filteredRows.length === 0 ? (
                                 <tr className="border-t border-slate-100">
-                                    <td colSpan={enableFinishedProductControl ? (isCurrentFinishedProductControlView ? 15 : 51) : showClarificationColumn ? 46 : 45} className="px-6 py-10 text-center text-slate-500">
+                                    <td colSpan={enableFinishedProductControl ? (isCurrentFinishedProductControlView ? 15 : 51) : showClarificationColumn ? 47 : 46} className="px-6 py-10 text-center text-slate-500">
                                         Brak wyników dla podanego wyszukiwania.
                                     </td>
                                 </tr>
@@ -1637,6 +1778,11 @@ function VariantProductBatchOrderedTestsPage({
                                                 <td className="px-6 py-4 text-slate-700">
                                                     <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${(LABEL_STATUS_META[row.label_status || 'current'] || LABEL_STATUS_META.current).className}`}>
                                                         {(LABEL_STATUS_META[row.label_status || 'current'] || LABEL_STATUS_META.current).label}
+                                                    </span>
+                                                </td>
+                                                <td className="px-6 py-4 text-slate-700">
+                                                    <span className="inline-flex rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-800">
+                                                        Zgodny
                                                     </span>
                                                 </td>
                                             </>
@@ -2465,6 +2611,121 @@ function VariantProductBatchOrderedTestsPage({
                                 className="rounded-2xl border border-slate-300 px-5 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
                             >
                                 Zamknij
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {labResultsDialog.open && (
+                <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/40 p-4 md:p-8">
+                    <div className="flex max-h-[calc(100vh-48px)] w-full max-w-6xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl">
+                        <div className="border-b border-slate-200 px-6 py-5">
+                            <h2 className="text-xl font-semibold text-slate-900">Wyniki badań laboratoryjnych</h2>
+                            <p className="mt-1 text-sm text-slate-600">
+                                Projekt {labResultsDialog.projectNumber} · SKU {labResultsDialog.sku} · partia {labResultsDialog.batchNumber}
+                                {labResultsDialog.laboratoryName ? ` · ${labResultsDialog.laboratoryName}` : ''}
+                            </p>
+                        </div>
+                        <div className="flex-1 overflow-y-auto px-6 py-5">
+                            {labResultsDialog.loading ? (
+                                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
+                                    Ładowanie parametrów i zapisanych wyników...
+                                </div>
+                            ) : (
+                                <>
+                                    <div className="mb-4 flex flex-col justify-between gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600 sm:flex-row sm:items-center">
+                                        <span>
+                                            Uzupełnione wyniki: <span className="font-semibold text-slate-900">
+                                                {labResultsDialog.results.filter((result) => result.result_value.trim() || result.notes.trim()).length}
+                                            </span> z {labResultsDialog.results.length}
+                                        </span>
+                                        <span>
+                                            {labResultsDialog.savedAt
+                                                ? `Ostatni zapis: ${new Date(labResultsDialog.savedAt).toLocaleString('pl-PL')}`
+                                                : 'Wyniki nie były jeszcze zapisywane'}
+                                        </span>
+                                    </div>
+                                    <div className="max-h-[65vh] overflow-auto rounded-2xl border border-slate-200">
+                                        {labResultsDialog.results.length === 0 ? (
+                                            <div className="px-4 py-8 text-center text-sm text-slate-500">
+                                                Brak parametrów badania dla numeru projektu tej partii.
+                                            </div>
+                                        ) : (
+                                            <table className="w-full min-w-[1050px] text-left text-sm">
+                                                <thead className="sticky top-0 z-10 bg-slate-50 text-xs uppercase tracking-[0.14em] text-slate-500">
+                                                    <tr>
+                                                        <th className="px-4 py-4">Parametr</th>
+                                                        <th className="px-4 py-4">Wymaganie</th>
+                                                        <th className="px-4 py-4">Metoda</th>
+                                                        <th className="min-w-[220px] px-4 py-4">Wynik z laboratorium</th>
+                                                        <th className="min-w-[220px] px-4 py-4">Uwagi</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {groupedLabResults.map((group) => (
+                                                        <Fragment key={group.label}>
+                                                            <tr className="border-t border-slate-200 bg-amber-100/80">
+                                                                <td colSpan={5} className="px-4 py-3 text-sm font-semibold text-amber-950">
+                                                                    {group.label}
+                                                                </td>
+                                                            </tr>
+                                                            {group.items.map((result) => (
+                                                                <tr key={result.detail_id} className="border-t border-slate-100 align-top">
+                                                                    <td className="px-4 py-4 text-slate-700">
+                                                                        {result.parameter_name_en} / {result.parameter_name_pl}
+                                                                    </td>
+                                                                    <td className="px-4 py-4 text-slate-700">
+                                                                        {result.requirement_en} / {result.requirement_pl}
+                                                                    </td>
+                                                                    <td className="px-4 py-4 text-slate-700">
+                                                                        {result.method_en} / {result.method_pl}
+                                                                    </td>
+                                                                    <td className="px-4 py-4">
+                                                                        <textarea
+                                                                            value={result.result_value}
+                                                                            onChange={(event) => updateLabResult(result.detail_id, 'result_value', event.target.value)}
+                                                                            rows={3}
+                                                                            placeholder="Wpisz wynik otrzymany z laboratorium"
+                                                                            className="w-full resize-y rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+                                                                        />
+                                                                    </td>
+                                                                    <td className="px-4 py-4">
+                                                                        <textarea
+                                                                            value={result.notes}
+                                                                            onChange={(event) => updateLabResult(result.detail_id, 'notes', event.target.value)}
+                                                                            rows={3}
+                                                                            placeholder="Opcjonalne uwagi"
+                                                                            className="w-full resize-y rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+                                                                        />
+                                                                    </td>
+                                                                </tr>
+                                                            ))}
+                                                        </Fragment>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        )}
+                                    </div>
+                                </>
+                            )}
+                        </div>
+                        <div className="sticky bottom-0 flex justify-end gap-3 border-t border-slate-200 bg-white px-6 py-5">
+                            <button
+                                type="button"
+                                onClick={closeLabResultsDialog}
+                                className="rounded-2xl border border-slate-300 px-5 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                                disabled={labResultsDialog.saving}
+                            >
+                                Zamknij
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleSaveLabResults}
+                                disabled={labResultsDialog.loading || labResultsDialog.saving || labResultsDialog.results.length === 0}
+                                className="rounded-2xl bg-slate-900 px-5 py-3 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                                {labResultsDialog.saving ? 'Zapisywanie...' : 'Zapisz wyniki'}
                             </button>
                         </div>
                     </div>
